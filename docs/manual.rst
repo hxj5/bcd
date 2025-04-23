@@ -119,7 +119,7 @@ fig_width : float, default 4.25
 fig_height : float, default 3.25
     Height of the plot in inch.
         
-fig_height : int, default 300
+fig_dpi : int, default 300
     Resolution of the plot.
         
 fig_dec : {3, 4}
@@ -129,7 +129,7 @@ fig_legend_xmin : float, default 0.5
     The xmin position of legend.
         
 fig_legend_ymin : float, default 0.12
-    The xmin position of legend.
+    The ymin position of legend.
         
 verbose : bool, default True
     Whether to show detailed logging information.
