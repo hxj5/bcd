@@ -1,5 +1,5 @@
-bcd - Benchmarking of CNA Detection in Single-cell and Spatial Transcriptomics
-==============================================================================
+bcd - Benchmarking of CNA Detection from Single-cell and Spatial Transcriptomics
+================================================================================
 The ``bcd`` (Benchmarking of CNA Detection) pipeline evaluates the performance
 of tools in detecting copy number alterations (CNAs) from single-cell and 
 spatial transcriptomics, using the ROC and PRC metrics, 
@@ -15,6 +15,13 @@ Release notes are at `docs/release.rst <./docs/release.rst>`_.
 
 Installation
 ------------
+
+Dependency
+~~~~~~~~~~
+The pipeline depends on some tools and packages listed below:
+
+* R (and Rscript)
+
 
 Install from this Github Repo (latest stable/dev version)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
