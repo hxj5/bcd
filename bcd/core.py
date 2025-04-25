@@ -61,14 +61,18 @@ def bcd_cna_type(
         Results.
     """
     # check args.
+    if len(args_list) <= 0:
+        info("%s: no input tool data, skip all next steps ..." % cna_type)
+        return(dict())
+
     assert cna_type in ("gain", "loss", "loh")
     assert len(args_list) == len(tool_fn_list)
     for fn in tool_fn_list:
         assert_e(fn)
     os.makedirs(out_dir, exist_ok = True)
-    
+
     step = 1
-    
+
     
     # subset the adata objects given overlapping cells and genes.
     info("subset the adata objects given overlapping cells and genes ...")
