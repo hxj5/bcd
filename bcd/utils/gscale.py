@@ -43,7 +43,7 @@ def get_overlap_genes(df, anno):
             (anno["chrom"] == x["chrom"].values[0]) &
             (anno["start"] <= x["end"].values[0]) &
             (anno["end"] >= x["start"].values[0]),
-            "gene"
+            ["chrom", "gene"]       # select two columns to force returning DataFrame instead of Series when there is only one region.
         ]).reset_index()
     overlap = overlap[["region", "gene"]].sort_values(by = "region")
     
