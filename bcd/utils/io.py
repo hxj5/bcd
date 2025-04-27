@@ -98,6 +98,9 @@ def load_truth(fn, sep = "\t"):
     if is_file_empty(fn):
         df = pd.DataFrame(
             columns = ["chrom", "start", "end", "clone", "cna_type"])
+        for col, dtype in zip(["chrom", "start", "end", "clone", "cna_type"],
+                             ["object", "int", "int", "object", "object"]):
+            df[col] = df[col].astype(dtype)
         return(df)
 
     df = pd.read_csv(fn, sep = sep, header = None)

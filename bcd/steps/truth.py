@@ -95,6 +95,7 @@ def run_truth(
         lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", 
         axis = 1
     )
+    df["region"] = df["region"].astype("object")
     df["is_cna"] = 1
     
     cell_anno = load_cell_anno(cell_anno_fn)

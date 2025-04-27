@@ -1,6 +1,7 @@
 # gscale.py - convert between different genomic scales, e.g., region and gene.
 
 
+import pandas as pd
 from logging import info
 from logging import warning as warn
 from .grange import format_chrom
@@ -34,19 +35,23 @@ def get_overlap_genes(df, anno):
     """
     df["chrom"] = df["chrom"].map(format_chrom)
     anno["chrom"] = anno["chrom"].map(format_chrom)
-    
+
     df = df.drop_duplicates("region", ignore_index = True)
     anno = anno.drop_duplicates("gene", ignore_index = True)
-    
-    overlap = df.groupby("region").apply(
-        lambda x: anno.loc[
-            (anno["chrom"] == x["chrom"].values[0]) &
-            (anno["start"] <= x["end"].values[0]) &
-            (anno["end"] >= x["start"].values[0]),
-            ["chrom", "gene"]       # select two columns to force returning DataFrame instead of Series when there is only one region.
-        ]).reset_index()
-    overlap = overlap[["region", "gene"]].sort_values(by = "region")
-    
+
+    overlap = None
+    if df.shape[0] <= 0:
+        overlap = pd.DataFrame(columns = ["region", "gene"], dtype = "object")
+    else:
+        overlap = df.groupby("region").apply(
+            lambda x: anno.loc[
+                (anno["chrom"] == x["chrom"].values[0]) &
+                (anno["start"] <= x["end"].values[0]) &
+                (anno["end"] >= x["start"].values[0]),
+                ["chrom", "gene"]       # select two columns to force returning DataFrame instead of Series when there is only one region.
+            ]).reset_index()
+        overlap = overlap[["region", "gene"]].sort_values(by = "region")
+
     stat = overlap.groupby("gene").size().reset_index(name = "n")
     dup = stat[stat["n"] > 1]
     uniq = stat[stat["n"] == 1].merge(overlap, on = "gene", how = "left")
