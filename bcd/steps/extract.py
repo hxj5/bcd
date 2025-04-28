@@ -233,7 +233,7 @@ def extract_numbat(obj_fn, out_fn_list, cna_type_list, gene_anno_fn, tmp_dir, ve
         info("load Numbat result ...")
         
     df = pd.read_csv(obj_fn, sep = '\t')
-    df = df[["cell", "CHROM", "seg_start", "seg_end", 
+    df = df[["cell", "CHROM", "seg_start", "seg_end",
             "p_amp", "p_del", "p_loh", "p_bamp", "p_bdel"]]
     df.columns = ["cell", "chrom", "start", "end", 
             "p_amp", "p_del", "p_loh", "p_bamp", "p_bdel"]
@@ -243,6 +243,10 @@ def extract_numbat(obj_fn, out_fn_list, cna_type_list, gene_anno_fn, tmp_dir, ve
         lambda x: f"{x['chrom']}:{x['start']}-{x['end']}", 
         axis = 1
     )
+    
+    # sometimes Numbat outputs duplicate records (i.e., cell+region) when 
+    # there are multiple seg_labels, e.g., 1a_amp and 1a_loh.
+    df = df.drop_duplicates(["cell", "region"], ignore_index = True)
     
     
     # get overlapping genes of each region.
