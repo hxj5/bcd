@@ -3,6 +3,29 @@
    =======
 
 
+Release v0.2.0 (03/05/2025)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Feature enhancement:
+
+* add option ``numbat_mtx_how`` indicating how to process the extracted 
+  Numbat matrix before overlap step.
+  Default is "expand": expand the Numbat matrix to transcriptomics scale and 
+  fill value 0.
+  Previously, the raw Numbat matrix is used (the "raw" option value).
+
+Fix bug:
+
+* allow empty input truth file.
+* extract: remove duplicate records in Numbat object file.
+* overlap: skip all next steps if no any tools support some CNA type.
+* utils.gscale.get_overlap_genes: select two columns to force returning 
+  DataFrame instead of Series when there is only one region.
+
+Others
+
+* README: add dependency.
+
+
 
 Release v0.1.0 (22/04/2025)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
