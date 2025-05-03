@@ -6,6 +6,7 @@ import gc
 import numpy as np
 import os
 import pandas as pd
+import scipy as sp
 from logging import info
 from ..utils.base import assert_e
 from ..utils.io import load_h5ad
@@ -210,7 +211,11 @@ def calc_metric(
         info("%s-%s: tool matrix %s and truth matrix %s." % \
              (cna_type, tid, str(tool_mtx.shape), str(truth_mtx.shape)))
     
-    tool_vec = tool_mtx.flatten()
+    tool_vec = None
+    if sp.sparse.issparse(tool_mtx):
+        tool_vec = tool_mtx.toarray().flatten()
+    else:
+        tool_vec = tool_mtx.flatten()
     cutoff = np.unique(tool_vec)
 
     eps = (np.max(cutoff) - np.min(cutoff)) / len(cutoff)

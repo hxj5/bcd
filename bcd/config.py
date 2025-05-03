@@ -14,6 +14,7 @@ class Config:
         self.cell_anno_fn = None
         self.gene_anno_fn = None
         self.cna_type_list = None
+        self.numbat_mtx_how = "expand"
         self.max_n_cutoff = 1000
         self.fig_width = 4.25,
         self.fig_height = 3.25,
@@ -37,6 +38,7 @@ class Config:
         s += "%scell_anno_fn = %s\n" % (prefix, self.cell_anno_fn)
         s += "%sgene_anno_fn = %s\n" % (prefix, self.gene_anno_fn)
         s += "%scna_type_list = %s\n" % (prefix, str(self.cna_type_list))
+        s += "%snumbat_mtx_how = %s\n" % (prefix, str(self.numbat_mtx_how))
         s += "%smax_n_cutoff = %s\n" % (prefix, str(self.max_n_cutoff))
         s += "%sfig_width = %f\n" % (prefix, self.fig_width)
         s += "%sfig_height = %f\n" % (prefix, self.fig_height)

@@ -25,6 +25,7 @@ def bcd_main(
     cell_anno_fn,
     gene_anno_fn,
     cna_type_list = None,
+    numbat_mtx_how = "expand",
     max_n_cutoff = 1000,
     fig_width = 4.25,
     fig_height = 3.25,
@@ -68,6 +69,12 @@ def bcd_main(
         A list of CNA types.
         None means using all available CNA types, including "gain",
         "loss", and "loh".
+    numbat_mtx_how : {"expand", "raw"}
+        How to process the extracted Numbat matrix before overlap step.
+        "expand": 
+            expand the Numbat matrix to transcriptomics scale and fill value 0;
+        "raw":
+            use the raw Numbat matrix.
     max_n_cutoff : int or None, default 1000
         Maximum number of cutoff values for calculating metrics.
         If None, use all unique values in tool matrix.
@@ -102,6 +109,7 @@ def bcd_main(
     conf.cell_anno_fn = cell_anno_fn
     conf.gene_anno_fn = gene_anno_fn
     conf.cna_type_list = cna_type_list
+    conf.numbat_mtx_how = numbat_mtx_how
     conf.max_n_cutoff = max_n_cutoff
     
     conf.fig_width = fig_width
@@ -177,6 +185,7 @@ def bcd_core(conf):
         out_prefix = "extract",
         cna_type_list = conf.cna_type_list,
         gene_anno_fn = conf.gene_anno_fn,
+        numbat_mtx_how = conf.numbat_mtx_how,
         verbose = conf.verbose
     )
     
