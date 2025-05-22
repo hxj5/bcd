@@ -37,9 +37,9 @@ def run_extract(
         File storing gene annotations.
     numbat_mtx_how : {"expand", "raw"}
         How to process the extracted Numbat matrix before overlap step.
-        "expand": 
+        - "expand": 
             expand the Numbat matrix to transcriptomics scale and fill value 0;
-        "raw":
+        - "raw":
             use the raw Numbat matrix.
     verbose : bool, default True
         Whether to show detailed logging information.
@@ -228,9 +228,9 @@ def extract_numbat(
         The folder to store temporary data.
     mtx_how : {"expand", "raw"}
         How to process the extracted Numbat matrix before overlap step.
-        "expand": 
+        - "expand": 
             expand the Numbat matrix to transcriptomics scale and fill value 0;
-        "raw":
+        - "raw":
             use the raw Numbat matrix.
     verbose : bool, default False
         Whether to show detailed logging information.

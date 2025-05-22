@@ -72,15 +72,15 @@ def bcd_main(
         "loss", and "loh".
     numbat_mtx_how : {"expand", "raw"}
         How to process the extracted Numbat matrix before overlap step.
-        "expand": 
+        - "expand": 
             expand the Numbat matrix to transcriptomics scale and fill value 0;
-        "raw":
+        - "raw":
             use the raw Numbat matrix.
     overlap_how : {"isec-cells", isec-both"}
         How to subset the tool matrices given the overlap cells and genes.
-        "isec-cells"
+        - "isec-cells"
             Subset tool matrix by intersected cells only.
-        "isec-both"
+        - "isec-both"
             Subset tool matrix by intersected cells and genes.
     max_n_cutoff : int or None, default 1000
         Maximum number of cutoff values for calculating metrics.

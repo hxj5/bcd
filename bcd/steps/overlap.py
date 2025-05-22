@@ -31,9 +31,9 @@ def run_overlap(
         An ".h5ad" File storing cell x gene ground truth binary matrix.
     overlap_how : {"isec-cells", "isec-both"}
         How to subset the tool matrices given the overlap cells and genes.
-        "isec-cells"
+        - "isec-cells"
             Subset tool matrix by intersected cells only.
-        "isec-both"
+        - "isec-both"
             Subset tool matrix by intersected cells and genes.
     out_dir : str
         The output folder.

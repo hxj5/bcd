@@ -84,27 +84,27 @@ truth_fn : str
     A header-free file stroing the ground truth.
     Its first five columns should be:
     
-    * "chrom";
-    * "start": 1-based and inclusive;
-    * "end": 1-based and inclusive;
-    * "clone": clone ID;
-    * "cna_type": CNA type, should be in {"gain", "loss", "loh"}.
+    - "chrom";
+    - "start": 1-based and inclusive;
+    - "end": 1-based and inclusive;
+    - "clone": clone ID;
+    - "cna_type": CNA type, should be in {"gain", "loss", "loh"}.
         
 cell_anno_fn : str
     File storing cell annotations.
     It is a header-free file whose first two columns are:
     
-    * "cell": cell barcode;
-    * "clone": clone ID;
+    - "cell": cell barcode;
+    - "clone": clone ID;
         
 gene_anno_fn : str
     File storing gene annotations.
     It is a header-free file whose first four columns are:
     
-    * "chrom";
-    * "start": 1-based and inclusive;
-    * "end": 1-based and inclusive;
-    * "gene": gene name.
+    - "chrom";
+    - "start": 1-based and inclusive;
+    - "end": 1-based and inclusive;
+    - "gene": gene name.
         
 cna_type_list : list of str or None, default None
     A list of CNA types.
@@ -113,16 +113,16 @@ cna_type_list : list of str or None, default None
     
 numbat_mtx_how : {"expand", "raw"}
     How to process the extracted Numbat matrix before overlap step.
-    "expand": 
+    - "expand": 
         expand the Numbat matrix to transcriptomics scale and fill value 0;
-    "raw":
+    - "raw":
         use the raw Numbat matrix.
 
 overlap_how : {"isec-cells", isec-both"}
     How to subset the tool matrices given the overlap cells and genes.
-    "isec-cells"
+    - "isec-cells"
         Subset tool matrix by intersected cells only.
-    "isec-both"
+    - "isec-both"
         Subset tool matrix by intersected cells and genes.
         
 max_n_cutoff : int or None, default 1000
