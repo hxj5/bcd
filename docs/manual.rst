@@ -113,6 +113,7 @@ cna_type_list : list of str or None, default None
     
 numbat_mtx_how : {"expand", "raw"}
     How to process the extracted Numbat matrix before overlap step.
+    
     - "expand": 
         expand the Numbat matrix to transcriptomics scale and fill value 0;
     - "raw":
@@ -120,6 +121,7 @@ numbat_mtx_how : {"expand", "raw"}
 
 overlap_how : {"isec-cells", isec-both"}
     How to subset the tool matrices given the overlap cells and genes.
+    
     - "isec-cells"
         Subset tool matrix by intersected cells only.
     - "isec-both"
