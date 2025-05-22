@@ -20,6 +20,7 @@ def bcd_cna_type(
     tool_fn_list,
     out_dir,
     truth_fn,
+    overlap_how = "isec-cells",
     max_n_cutoff = 1000,
     fig_width = 4.25,
     fig_height = 3.25,
@@ -45,6 +46,7 @@ def bcd_cna_type(
         The output folder.
     truth_fn : str
         An ".h5ad" File storing cell x gene ground truth binary matrix.
+    overlap_how
     max_n_cutoff
     fig_width
     fig_height
@@ -83,6 +85,7 @@ def bcd_cna_type(
         args_list = args_list, 
         tool_fn_list = tool_fn_list,
         truth_fn = truth_fn,
+        overlap_how = overlap_how,
         out_dir = res_dir, 
         out_prefix = "overlap",
         verbose = verbose
@@ -100,7 +103,7 @@ def bcd_cna_type(
         out_dir = res_dir,
         out_prefix = "metric",
         tool_fn_list = overlap_res["out_tool_fn_list"],
-        truth_fn = overlap_res["out_truth_fn"],
+        truth_fn_list = overlap_res["out_truth_fn_list"],
         cna_type = cna_type,
         max_n_cutoff = max_n_cutoff,
         verbose = verbose

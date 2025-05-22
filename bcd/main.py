@@ -26,6 +26,7 @@ def bcd_main(
     gene_anno_fn,
     cna_type_list = None,
     numbat_mtx_how = "expand",
+    overlap_how = "isec-cells",
     max_n_cutoff = 1000,
     fig_width = 4.25,
     fig_height = 3.25,
@@ -75,6 +76,12 @@ def bcd_main(
             expand the Numbat matrix to transcriptomics scale and fill value 0;
         "raw":
             use the raw Numbat matrix.
+    overlap_how : {"isec-cells", isec-both"}
+        How to subset the tool matrices given the overlap cells and genes.
+        "isec-cells"
+            Subset tool matrix by intersected cells only.
+        "isec-both"
+            Subset tool matrix by intersected cells and genes.
     max_n_cutoff : int or None, default 1000
         Maximum number of cutoff values for calculating metrics.
         If None, use all unique values in tool matrix.
@@ -110,6 +117,7 @@ def bcd_main(
     conf.gene_anno_fn = gene_anno_fn
     conf.cna_type_list = cna_type_list
     conf.numbat_mtx_how = numbat_mtx_how
+    conf.overlap_how = overlap_how
     conf.max_n_cutoff = max_n_cutoff
     
     conf.fig_width = fig_width
@@ -226,6 +234,7 @@ def bcd_core(conf):
             tool_fn_list = tool_fn_list,
             out_dir = cna_type_dirs[i],
             truth_fn = truth_res["out_fn_list"][i],
+            overlap_how = conf.overlap_how,
             max_n_cutoff = conf.max_n_cutoff,
             fig_width = conf.fig_width,
             fig_height = conf.fig_height,

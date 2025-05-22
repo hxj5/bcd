@@ -18,7 +18,7 @@ def run_metric(
     out_dir,
     out_prefix,
     tool_fn_list,
-    truth_fn,
+    truth_fn_list,
     cna_type,
     max_n_cutoff = 1000,
     verbose = True
@@ -36,9 +36,9 @@ def run_metric(
     tool_fn_list : list of str
         A list of tool-specific files storing cell x gene expression or 
         probability matrix.
-    truth_fn : str
-        File storing the ground truth cell x gene expression or probability
-        matrix.
+    truth_fn_list : list of str
+        A list of tool-specific files storing the ground truth cell x gene 
+        expression or probability matrices, matching order of `tool_fn_list`.
     cna_type : str
         CNA types, one of {"gain", "loss", "loh"}.
     max_n_cutoff : int or None, default 1000
@@ -57,7 +57,9 @@ def run_metric(
     for fn in tool_fn_list:
         assert_e(fn)
     os.makedirs(out_dir, exist_ok = True)
-    assert_e(truth_fn)
+    assert len(truth_fn_list) == len(tool_fn_list)
+    for fn in truth_fn_list:
+        assert_e(fn)
     assert cna_type in ("gain", "loss", "loh")
 
     
@@ -65,13 +67,12 @@ def run_metric(
     if verbose:
         info("%s: calculate metrics for each tool ..." % cna_type)
     
-    truth = load_h5ad(truth_fn)
-    truth_mtx = truth.X
-    
     df_metric = None
     auroc_list = []
     auprc_list = []
-    for i, (args, tool_fn) in enumerate(zip(args_list, tool_fn_list)):
+    for i, (args, tool_fn, truth_fn) in enumerate(
+        zip(args_list, tool_fn_list, truth_fn_list)):
+        
         tid = args.tid
         if verbose:
             info("process %s ..." % tid)
@@ -81,6 +82,9 @@ def run_metric(
         
         if tid.lower() == "infercnv" and cna_type == "loss":
             tool_mtx = tool_mtx * -1
+            
+        truth = load_h5ad(truth_fn)
+        truth_mtx = truth.X
         
         res = calc_metric(
             tid = tid,
