@@ -1,6 +1,24 @@
 ..
    History
    =======
+   
+   
+   
+Release v0.3.0 (22/05/2025)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Feature enhancement:
+
+* add option ``overlap_how`` indicating how to subset the tool matrices given
+  the overlap cells and genes.
+  Default is "isec-cells": subset tool matrix by intersected cells only.
+  Previously, subset tool matrix by intersected cells and genes (the 
+  "isec-both" option value).
+
+Others
+
+* docs: update manual, adding options "numbat_mtx_how" and "overlap_how".
+* restructure folder src_deprecated.
+
 
 
 Release v0.2.0 (03/05/2025)
