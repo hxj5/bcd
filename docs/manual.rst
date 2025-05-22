@@ -58,6 +58,8 @@ Full Parameters
         sid, args_list, out_dir, 
         truth_fn, cell_anno_fn, gene_anno_fn, 
         cna_type_list = None, 
+        numbat_mtx_how = "expand",
+        overlap_how = "isec-cells",
         max_n_cutoff = 1000,
         fig_width = 4.25, fig_height = 3.25, 
         fig_dpi = 300, fig_dec = 3, 
@@ -108,6 +110,20 @@ cna_type_list : list of str or None, default None
     A list of CNA types.
     None means using all available CNA types, including "gain",
     "loss", and "loh".
+    
+numbat_mtx_how : {"expand", "raw"}
+    How to process the extracted Numbat matrix before overlap step.
+    "expand": 
+        expand the Numbat matrix to transcriptomics scale and fill value 0;
+    "raw":
+        use the raw Numbat matrix.
+
+overlap_how : {"isec-cells", isec-both"}
+    How to subset the tool matrices given the overlap cells and genes.
+    "isec-cells"
+        Subset tool matrix by intersected cells only.
+    "isec-both"
+        Subset tool matrix by intersected cells and genes.
         
 max_n_cutoff : int or None, default 1000
     Maximum number of cutoff values for calculating metrics.
@@ -269,7 +285,7 @@ The preprocessing part:
 The CNA-type-specific processing:
 
 #. ``overlap``: subset the adata objects of tools and truth given their overlapping 
-   cells and genes.
+   cells and/or genes.
 #. ``metric``: calculate ROC and PRC using CNA expression or probability values
    as scores and binary truth values as labels.
 #. ``plot``: plot ROC and PRC.
