@@ -20,7 +20,8 @@ Dependency
 ~~~~~~~~~~
 The pipeline depends on some tools and packages listed below:
 
-* R (and Rscript)
+* R (and Rscript), for extracting expression or probability matrix from 
+  output of R packages, such as inferCNV and Numbat.
 
 
 Install from this Github Repo (latest stable/dev version)
