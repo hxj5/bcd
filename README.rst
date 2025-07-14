@@ -28,7 +28,7 @@ Install from this Github Repo (latest stable/dev version)
 
 .. code-block:: shell
 
-    pip install -U https://github.com/hxj5/bcd.git
+    pip install -U git+https://github.com/hxj5/bcd.git
 
 
 Install locally
