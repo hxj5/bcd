@@ -6,7 +6,7 @@ from . import steps
 from . import utils
 
 from .app import VERSION
-from .args import InferCNVArgs, NumbatArgs
+from .args import InferCNVArgs, NumbatArgs, CopyKatArgs, XCloneArgs, XCloneRDRArgs
 from .main import bcd_main
 
 

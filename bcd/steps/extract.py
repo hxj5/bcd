@@ -91,6 +91,43 @@ def run_extract(
             )
             for cna_type, fn in zip(cna_type_list, out_fn_list):
                 out_fns[cna_type].append(fn)
+
+        elif tid == "copykat":
+            out_fn_list = [os.path.join(out_dir, f"{out_prefix}.{tid}.{cna_type}.h5ad") for cna_type in cna_type_list]
+            for cna_type, out_fn in zip(cna_type_list, out_fn_list):
+                extract_copykat(
+                    obj_fn=args.obj_fn,
+                    out_fn=out_fn,
+                    tmp_dir=res_dir,
+                    verbose=verbose
+                )
+                out_fns[cna_type].append(out_fn)
+
+        elif tid[:6] == "xclone" and tid != "xclonerdr":
+            out_fn_list = [os.path.join(out_dir, f"{out_prefix}.{tid}.{cna_type}.h5ad") for cna_type in cna_type_list]
+            extract_xclone(
+                obj_fn=args.obj_fn,
+                out_fn_list=out_fn_list,
+                cna_type_list=cna_type_list,
+                tmp_dir=res_dir,
+                verbose=verbose
+            )
+            for cna_type, fn in zip(cna_type_list, out_fn_list):
+                out_fns[cna_type].append(fn)
+        elif tid == "xclonerdr":
+            out_fn_list = [os.path.join(out_dir, f"{out_prefix}.{tid}.{cna_type}.h5ad") for cna_type in cna_type_list]
+            extract_xclone_rdr(
+                obj_fn=args.obj_fn,
+                rdr_fn=args.rdr_fn,
+                out_fn_list=out_fn_list,
+                cna_type_list=cna_type_list,
+                tmp_dir=res_dir,
+                verbose=verbose
+            )
+            for cna_type, fn in zip(cna_type_list, out_fn_list):
+                out_fns[cna_type].append(fn)
+        else:
+            raise ValueError(f"Error: unknown tool id '{tid}'.")
                 
     res = dict(
         # out_fns : dict of {str : list}
@@ -346,3 +383,236 @@ def extract_numbat(
             
         del adata
         gc.collect()
+
+def extract_copykat(
+    obj_fn,
+    out_fn,
+    tmp_dir,
+    verbose=False
+):
+    """
+    cnv_type,
+    method_sub="copykat",
+    mtx_type="expr",
+    cnv_scale="gene",
+    gene_anno=None,
+
+    Extract CNV data from CopyKAT output and save as AnnData object.
+
+    Parameters
+    ----------
+    sid : str
+        Sample ID.
+    dat_dir : str
+        Directory containing CopyKAT output.
+    cnv_type : str
+        CNA type (not used, for compatibility).
+    method_sub : str, default "copykat"
+        Sub-method name (for compatibility).
+    mtx_type : str, default "expr"
+        Matrix type (for compatibility).
+    cnv_scale : str, default "gene"
+        CNV scale (for compatibility).
+    gene_anno : str or None
+        Gene annotation file (not used).
+    out_fn : str or None
+        Output .h5ad file to save the matrix. If None, does not save.
+    verbose : bool, default False
+        Whether to print verbose output.
+
+    Returns
+    -------
+    dict
+        {"mtx": cell x gene matrix (numpy array), "overlap": None}
+    """
+    import pandas as pd
+    import numpy as np
+    import anndata as ad
+
+    if verbose:
+        info(f"Reading CopyKAT file: {obj_fn}")
+    assert_e(obj_fn)
+    if out_fn is not None:
+        assert_e(out_fn)
+    
+    os.makedirs(tmp_dir, exist_ok = True)
+
+    mtx = pd.read_csv(obj_fn, sep="\t", header=0, dtype=str)
+    mtx.index = mtx["hgnc_symbol"]
+    mtx = mtx.iloc[:, 7:]  # Remove first 7 columns
+    mtx = mtx.T  # cell x gene
+
+    if verbose:
+        info(f"CopyKAT matrix shape: {mtx.shape}")
+
+    adata = ad.AnnData(
+        X=mtx.values.astype(float),
+        obs=pd.DataFrame(index=mtx.index),
+        var=pd.DataFrame(index=mtx.columns)
+    )
+    if out_fn is not None:
+        save_h5ad(adata, out_fn)
+        if verbose:
+            info(f"Saved AnnData to {out_fn}")
+
+
+def extract_xclone(
+    obj_fn, 
+    out_fn_list, 
+    cna_type_list,
+    tmp_dir,
+    verbose = False
+):
+    """Extract XClone expression matrix and convert it to python object.
+    
+    Parameters
+    ----------
+    obj_fn : str
+        File storing the XClone object.
+    out_fn : str
+        Output ".h5ad" file storing the cell x gene matrix.
+    rdr_fn : str or None, default None
+        File storing the read depth ratio (RDR) matrix.
+        If None, do not use RDR.
+    verbose : bool, default False
+        Whether to show detailed logging information.
+        
+    Returns
+    -------
+    Void.
+    """
+    if verbose:
+        info("check args ...")
+    assert_e(obj_fn)
+    assert len(out_fn_list) > 0
+    assert len(cna_type_list) == len(out_fn_list)
+    for cna_type in cna_type_list:
+        assert cna_type in ("gain", "loss", "loh")
+    os.makedirs(tmp_dir, exist_ok = True)
+    if verbose:
+        info("load XClone object ...")
+    
+    xclone_adata = ad.read_h5ad(obj_fn)
+    if verbose:
+        info("XClone adata shape = %s." % str(xclone_adata.shape))
+    
+    prob = xclone_adata.layers['prob1_merge']
+    # prob_merge = np.stack([copy_loss, loh, copy_neutral, copy_gain], axis = -1)
+
+    # Prepare obs and var DataFrames
+    cells = xclone_adata.obs.index.tolist()
+    genes = xclone_adata.var['GeneName'].tolist()
+
+    obs_df = pd.DataFrame(data = dict(cell = cells))
+    var_df = pd.DataFrame(data = dict(gene = genes))
+
+    # iterate over cna types.
+    for cna_type, out_fn in zip(cna_type_list, out_fn_list):
+        if verbose:
+            info("process cna_type '%s' ..." % cna_type)
+
+        if cna_type == "loss":
+            mtx = prob[:, :, 0]  # copy_loss
+        elif cna_type == "loh":
+            mtx = prob[:, :, 1]  # loh
+        elif cna_type == "gain":
+            mtx = prob[:, :, 3]  # copy_gain
+        else:
+            raise ValueError(f"Error: unknown cnv type '{cna_type}'.")
+
+        adata = ad.AnnData(
+            X=mtx,
+            obs=obs_df,
+            var=var_df
+        )
+        save_h5ad(adata, out_fn)
+        
+        if verbose:
+            info("saved adata shape = %s." % str(adata.shape))
+        
+        del adata
+        gc.collect()
+
+def extract_xclone_rdr(
+    obj_fn, 
+    rdr_fn, 
+    out_fn_list, 
+    cna_type_list,
+    tmp_dir,
+    verbose = False
+):
+    """Extract XClone RDR matrix and convert it to python object.
+    
+    Parameters
+    ----------
+    obj_fn : str
+        File storing the XClone object.
+    rdr_fn : str
+        File storing the read depth ratio (RDR) matrix.
+        If None, do not use RDR.
+    out_fn : str
+        Output ".h5ad" file storing the cell x gene matrix.
+    verbose : bool, default False
+        Whether to show detailed logging information.
+        
+    Returns
+    -------
+    Void.
+    """
+    if verbose:
+        info("check args ...")
+        
+    assert_e(obj_fn)
+    assert_e(rdr_fn)
+    
+    assert len(out_fn_list) > 0
+    assert len(cna_type_list) == len(out_fn_list)
+    
+    for cna_type in cna_type_list:
+        assert cna_type in ("gain", "loss")
+        
+    os.makedirs(tmp_dir, exist_ok = True)
+    
+    if verbose:
+        info("load XClone object ...")
+        
+    xclone_adata = ad.read_h5ad(obj_fn)
+    
+    if verbose:
+        info("XClone adata shape = %s." % str(xclone_adata.shape))
+        
+    rdr_adata = ad.read_h5ad(rdr_fn)
+    
+    if verbose:
+        info("RDR adata shape = %s." % str(rdr_adata.shape))
+        
+    # Prepare obs and var DataFrames
+    cells = xclone_adata.obs.index.tolist()
+    genes = xclone_adata.var['GeneName'].tolist()
+
+    obs_df = pd.DataFrame(data = dict(cell = cells))
+    var_df = pd.DataFrame(data = dict(gene = genes))
+    
+    # iterate over cna types.
+    for cna_type, out_fn in zip(cna_type_list, out_fn_list):
+        if verbose:
+            info("process cna_type '%s' ..." % cna_type)
+
+        if cna_type == "loss":
+            mtx = xclone_adata.layers['posterior_mtx'][:, :, 0]  # copy_loss
+        elif cna_type == "gain":
+            mtx = xclone_adata.layers['posterior_mtx'][:, :, 1]  # copy_gain
+        else:
+            raise ValueError(f"Error: unknown cnv type '{cna_type}'.")
+
+        adata = ad.AnnData(
+            X=mtx,
+            obs=obs_df,
+            var=var_df
+        )
+        save_h5ad(adata, out_fn)
+        if verbose:
+            info("saved adata shape = %s." % str(adata.shape))
+        del adata
+        gc.collect()
+

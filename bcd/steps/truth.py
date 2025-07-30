@@ -291,7 +291,7 @@ def merge_truth_profiles(in_fn, out_fn, max_gap = 1):
             ch_dat = cl_dat[chrom]
             for s, e, cna_type in ch_dat:
                 fp.write("\t".join([chrom, str(s), str(e), \
-                    clone, cna_type]) + "\n")
+                    str(clone), str(cna_type)]) + "\n")
                 n_new += 1
     fp.close()
     return((0, n_old, n_new))

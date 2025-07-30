@@ -30,9 +30,22 @@ class InferCNVArgs(ToolArgs):
         super().__init__(tid = "inferCNV", has_loh = False)
         self.obj_fn = obj_fn
         
-
-
 class NumbatArgs(ToolArgs):
     def __init__(self, obj_fn):
         super().__init__(tid = "Numbat")
+        self.obj_fn = obj_fn
+
+class CopyKatArgs(ToolArgs):
+    def __init__(self, obj_fn):
+        super().__init__(tid = "CopyKat")
+        self.obj_fn = obj_fn
+
+class XCloneArgs(ToolArgs):
+    def __init__(self, obj_fn, tid = "XClone"):
+        super().__init__(tid = tid)
+        self.obj_fn = obj_fn
+
+class XCloneRDRArgs(ToolArgs):
+    def __init__(self, obj_fn):
+        super().__init__(tid = "XCloneRDR")
         self.obj_fn = obj_fn
