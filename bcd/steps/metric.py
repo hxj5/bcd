@@ -80,7 +80,7 @@ def run_metric(
         adata = load_h5ad(tool_fn)
         tool_mtx = adata.X
         
-        if tid.lower() == "infercnv" and cna_type == "loss":
+        if tid.lower() in ["infercnv", "copykat"] and cna_type == "loss":
             tool_mtx = tool_mtx * -1
             
         truth = load_h5ad(truth_fn)

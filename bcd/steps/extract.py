@@ -95,13 +95,16 @@ def run_extract(
         elif tid == "copykat":
             out_fn_list = [os.path.join(out_dir, f"{out_prefix}.{tid}.{cna_type}.h5ad") for cna_type in cna_type_list]
             for cna_type, out_fn in zip(cna_type_list, out_fn_list):
-                extract_copykat(
-                    obj_fn=args.obj_fn,
-                    out_fn=out_fn,
-                    tmp_dir=res_dir,
-                    verbose=verbose
-                )
-                out_fns[cna_type].append(out_fn)
+                if args.has_cna_type(cna_type):
+                    extract_copykat(
+                        obj_fn=args.obj_fn,
+                        out_fn=out_fn,
+                        tmp_dir=res_dir,
+                        verbose=verbose
+                    )
+                    out_fns[cna_type].append(out_fn)
+                else:
+                    out_fns[cna_type].append(None)
 
         elif tid[:6] == "xclone" and tid != "xclonerdr":
             out_fn_list = [os.path.join(out_dir, f"{out_prefix}.{tid}.{cna_type}.h5ad") for cna_type in cna_type_list]
@@ -432,8 +435,6 @@ def extract_copykat(
     if verbose:
         info(f"Reading CopyKAT file: {obj_fn}")
     assert_e(obj_fn)
-    if out_fn is not None:
-        assert_e(out_fn)
     
     os.makedirs(tmp_dir, exist_ok = True)
 
@@ -447,8 +448,8 @@ def extract_copykat(
 
     adata = ad.AnnData(
         X=mtx.values.astype(float),
-        obs=pd.DataFrame(index=mtx.index),
-        var=pd.DataFrame(index=mtx.columns)
+        obs=pd.DataFrame(data = dict(cell = mtx.index)),
+        var=pd.DataFrame(data = dict(gene = mtx.columns))
     )
     if out_fn is not None:
         save_h5ad(adata, out_fn)

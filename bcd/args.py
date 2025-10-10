@@ -37,7 +37,7 @@ class NumbatArgs(ToolArgs):
 
 class CopyKatArgs(ToolArgs):
     def __init__(self, obj_fn):
-        super().__init__(tid = "CopyKat")
+        super().__init__(tid = "CopyKat", has_loh = False)
         self.obj_fn = obj_fn
 
 class XCloneArgs(ToolArgs):
