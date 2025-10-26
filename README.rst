@@ -60,7 +60,7 @@ An example is:
 
 .. code-block:: python
 
-    from bcd.call_accuracy import bcd_main, InferCNVArgs, NumbatArgs
+    from bcd.cna_detection import bcd_main, InferCNVArgs, NumbatArgs
 
     infercnv_args = InferCNVArgs(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
     numbat_args = NumbatArgs(obj_fn = "./numbat/joint_post_2.tsv")

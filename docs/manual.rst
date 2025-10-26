@@ -9,7 +9,7 @@ Manual
 
 The ``bcd`` (Benchmarking of CNA Detection) pipeline evaluates the performance
 of tools in detecting copy number alterations (CNAs) from single-cell and 
-spatial transcriptomics, using the ROC and PRC metrics, 
+spatial transcriptomics, using metrics such as the ROC and PRC, 
 given the input ground truth of CNA profiles.
 
 
@@ -24,7 +24,7 @@ An example is:
 
 .. code-block:: python
 
-    from bcd.call_accuracy import bcd_main, InferCNVArgs, NumbatArgs
+    from bcd.cna_detection import bcd_main, InferCNVArgs, NumbatArgs
 
     infercnv_args = InferCNVArgs(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
     numbat_args = NumbatArgs(obj_fn = "./numbat/joint_post_2.tsv")

@@ -2,10 +2,10 @@
 
 
 from . import app
-from . import call_accuracy
+from . import cna_detection
 
 from .app import VERSION
-from .call_accuracy.main import bcd_main as call_accuracy_main
+from .cna_detection.main import bcd_main as cna_detection_main
 
 
 # what `__all__` does:
