@@ -7,13 +7,13 @@ import time
 
 from logging import info, error
 from logging import warning as warn
-from .app import APP, VERSION
 from .config import Config
 from .core import bcd_cna_type
 from .steps.extract import run_extract
 from .steps.truth import run_truth
 from .utils.base import assert_e
 from .utils.xlog import init_logging
+from ..app import APP, VERSION
 
 
 

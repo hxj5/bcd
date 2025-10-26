@@ -2,12 +2,10 @@
 
 
 from . import app
-from . import steps
-from . import utils
+from . import call_accuracy
 
 from .app import VERSION
-from .args import InferCNVArgs, NumbatArgs, CopyKatArgs, XCloneArgs, XCloneRDRArgs
-from .main import bcd_main
+from .call_accuracy.main import bcd_main as call_accuracy_main
 
 
 # what `__all__` does:
