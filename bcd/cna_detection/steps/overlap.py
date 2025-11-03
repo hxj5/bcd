@@ -11,7 +11,7 @@ from ..utils.io import load_h5ad, save_h5ad
 
 
 def run_overlap(
-    args_list, 
+    tool_list, 
     tool_fn_list, 
     truth_fn,
     overlap_how,
@@ -23,8 +23,8 @@ def run_overlap(
     
     Parameters
     ----------    
-    args_list : list of ToolArgs
-        A list of tool-specific :class:`~.args.ToolArgs` objects.
+    tool_list : list of Tool
+        A list of tool-specific :class:`~.tool.Tool` objects.
     tool_fn_list : list of str
         A list of tool-specific adata files storing cell x gene matrices.
     truth_fn : str
@@ -48,8 +48,8 @@ def run_overlap(
         The returned data and parameters to be used by downstream analysis.
     """
     # check args.
-    assert len(args_list) > 0
-    assert len(tool_fn_list) == len(args_list)
+    assert len(tool_list) > 0
+    assert len(tool_fn_list) == len(tool_list)
     for fn in tool_fn_list:
         assert_e(fn)
     assert_e(truth_fn)
@@ -62,7 +62,7 @@ def run_overlap(
     
     if overlap_how == "isec-cells":
         res = overlap_isec_cells(
-            args_list = args_list, 
+            tool_list = tool_list, 
             tool_fn_list = tool_fn_list, 
             truth_fn = truth_fn,
             out_dir = out_dir, 
@@ -74,7 +74,7 @@ def run_overlap(
         
     elif overlap_how == "isec-both":
         res = overlap_isec_both(
-            args_list = args_list, 
+            tool_list = tool_list, 
             tool_fn_list = tool_fn_list, 
             truth_fn = truth_fn,
             out_dir = out_dir, 
@@ -91,12 +91,12 @@ def run_overlap(
     res = dict(
         # out_tool_fn_list : list of str
         #   A list of output tool-specific adata files, in the same order as 
-        #   `args_list` and `tool_fn_list`.
+        #   `tool_list` and `tool_fn_list`.
         out_tool_fn_list = out_tool_fn_list,
         
         # out_truth_fn : list of str
         #   Output subset truth adata file for each tool, in the same order as
-        #   `args_list` and `tool_fn_list`.
+        #   `tool_list` and `tool_fn_list`.
         out_truth_fn_list = out_truth_fn_list
     )
     return(res)
@@ -104,7 +104,7 @@ def run_overlap(
 
 
 def overlap_isec_cells(
-    args_list, 
+    tool_list, 
     tool_fn_list, 
     truth_fn,
     out_dir, 
@@ -115,7 +115,7 @@ def overlap_isec_cells(
     
     Parameters
     ----------
-    args_list
+    tool_list
     tool_fn_list
     truth_fn
     out_dir
@@ -134,7 +134,7 @@ def overlap_isec_cells(
             len(tool_fn_list))
 
     ovp_cells = None
-    for i, (args, fn) in enumerate(zip(args_list, tool_fn_list)):
+    for i, (tool, fn) in enumerate(zip(tool_list, tool_fn_list)):
         adata = load_h5ad(fn)
         if i == 0:
             ovp_cells = adata.obs["cell"]
@@ -171,8 +171,8 @@ def overlap_isec_cells(
 
     out_tool_fn_list = []
     out_truth_fn_list = []
-    for args, tool_fn in zip(args_list, tool_fn_list):
-        tid = args.tid
+    for tool, tool_fn in zip(tool_list, tool_fn_list):
+        tid = tool.tid
 
         adata = load_h5ad(tool_fn)
         old_shape_tool = adata.shape
@@ -215,12 +215,12 @@ def overlap_isec_cells(
     res = dict(
         # out_tool_fn_list : list of str
         #   A list of output tool-specific adata files, in the same order as 
-        #   `args_list` and `tool_fn_list`.
+        #   `tool_list` and `tool_fn_list`.
         out_tool_fn_list = out_tool_fn_list,
         
         # out_truth_fn : list of str
         #   Output subset truth adata file for each tool, in the same order as
-        #   `args_list` and `tool_fn_list`.
+        #   `tool_list` and `tool_fn_list`.
         out_truth_fn_list = out_truth_fn_list
     )
     return(res)
@@ -228,7 +228,7 @@ def overlap_isec_cells(
     
     
 def overlap_isec_both(
-    args_list, 
+    tool_list, 
     tool_fn_list, 
     truth_fn,
     out_dir, 
@@ -239,7 +239,7 @@ def overlap_isec_both(
     
     Parameters
     ----------    
-    args_list
+    tool_list
     tool_fn_list
     truth_fn
     out_dir
@@ -258,7 +258,7 @@ def overlap_isec_both(
             len(tool_fn_list))
 
     ovp_cells = ovp_genes = None
-    for i, (args, fn) in enumerate(zip(args_list, tool_fn_list)):
+    for i, (tool, fn) in enumerate(zip(tool_list, tool_fn_list)):
         adata = load_h5ad(fn)
         if i == 0:
             ovp_cells = adata.obs["cell"]
@@ -306,8 +306,8 @@ def overlap_isec_both(
         info("subset adata given overlap cells and genes ...")
 
     out_tool_fn_list = []
-    for args, tool_fn in zip(args_list, tool_fn_list):
-        tid = args.tid
+    for tool, tool_fn in zip(tool_list, tool_fn_list):
+        tid = tool.tid
 
         adata = load_h5ad(tool_fn)
         old_shape = adata.shape
@@ -348,7 +348,7 @@ def overlap_isec_both(
     res = dict(
         # out_tool_fn_list : list of str
         #   A list of output tool-specific adata files, in the same order as 
-        #   `args_list` and `tool_fn_list`.
+        #   `tool_list` and `tool_fn_list`.
         out_tool_fn_list = out_tool_fn_list,
         
         # out_truth_fn : str

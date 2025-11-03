@@ -8,7 +8,7 @@ import sys
 class Config:
     def __init__(self):
         self.sid = None
-        self.args_list = None
+        self.tool_list = None
         self.out_dir = None
         self.truth_fn = None
         self.cell_anno_fn = None
@@ -32,8 +32,8 @@ class Config:
             
         s =  "%s\n" % prefix
         s += "%ssid = %s\n" % (prefix, self.sid)
-        s += "%slen(args_list) = %d\n" % (prefix, len(self.args_list))
-        s += "%stid list = '%s'\n" % (prefix, ", ".join([args.tid for args in self.args_list]))
+        s += "%slen(tool_list) = %d\n" % (prefix, len(self.tool_list))
+        s += "%stid list = '%s'\n" % (prefix, ", ".join([tool.tid for tool in self.tool_list]))
         s += "%sout_dir = %s\n" % (prefix, self.out_dir)
         s += "%struth_fn = %s\n" % (prefix, self.truth_fn)
         s += "%scell_anno_fn = %s\n" % (prefix, self.cell_anno_fn)
