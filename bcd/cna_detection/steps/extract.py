@@ -127,6 +127,18 @@ def run_extract(
             for cna_type, fn in zip(cna_type_list, out_fn_list):
                 out_fns[cna_type].append(fn)
         
+        elif tid == "calicost":
+            out_fn_list = [os.path.join(out_dir, "%s.%s.%s.h5ad" % \
+                (out_prefix, tid, cna_type)) for cna_type in cna_type_list]
+            tool.extract(
+                out_fn_list=out_fn_list,
+                cna_type_list=cna_type_list,
+                tmp_dir=res_dir,
+                verbose=verbose
+            )
+            for cna_type, fn in zip(cna_type_list, out_fn_list):
+                out_fns[cna_type].append(fn)
+        
         else:
             raise ValueError(f"Error: unknown tool id '{tid}'.")
                 

@@ -22,10 +22,25 @@ import os
 import numpy as np
 from scipy.cluster.hierarchy import linkage, fcluster
 
-# truth
-import pandas as pd
-import os
+# infercnv
+# Add the path to sys.path
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../cna_detection/utils')))
+from base import assert_e, exe_cmdline
 
+# numbat, calicost
+from sklearn.cluster import KMeans
+
+# evaluate
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score,
+    f1_score, adjusted_rand_score, confusion_matrix
+)
+
+
+# truth
 def extract_ground_truth(
     tsv_path,
     out_dir='output',
@@ -87,9 +102,6 @@ def extract_ground_truth(
 
 # cluster for xclone and infercnv
 # bcd/tumor_nontumor/utils.py   (or wherever tumor_classify lives)
-import os
-import pandas as pd
-import numpy as np
 from anndata import AnnData
 from scipy.cluster.hierarchy import linkage, fcluster
 
@@ -199,8 +211,102 @@ def xclone_predict_and_save(
     print(f"Predictions saved to {predictions_path}")
 
 # infercnv
+def extract_infercnv(obj_fn, out_fn, tmp_dir, verbose = False):
+    """Extract inferCNV expression matrix and convert it to python object.
+    
+    Parameters
+    ----------
+    obj_fn : str
+        File storing the inferCNV object. Typically using the
+        "BayesNetOutput.HMMi6.hmm_mode-samples/MCMC_inferCNV_obj.rds".
+    out_fn : str
+        Output ".h5ad" file storing the cell x gene matrix.
+    tmp_dir : str
+        The folder to store temporary data.
+    verbose : bool, default False
+        Whether to show detailed logging information.
+        
+    Returns
+    -------
+    Void.
+    """
+    # check args.
+    if verbose:
+        info("check args ...")
+        
+    assert_e(obj_fn)
+    os.makedirs(tmp_dir, exist_ok = True)
+
+
+    # generate R scripts.
+    if verbose:
+        info("generate R scripts ...")
+        
+    cell_fn = os.path.join(tmp_dir, "barcodes.tsv")
+    gene_fn = os.path.join(tmp_dir, "genes.tsv")
+    mtx_fn = os.path.join(tmp_dir, "matrix.mtx")
+    
+    s = ""
+    s += '''# extract cell x gene expression matrix from infercnv output.\n'''
+    s += '''\n'''
+    s += '''obj <- readRDS("%s")\n''' % obj_fn
+    s += '''mtx <- obj@expr.data\n'''
+    s += '''mtx <- t(mtx)         # cell x gene matrix\n'''
+    s += '''\n'''  
+    s += '''write(\n'''
+    s += '''    rownames(mtx),\n'''
+    s += '''    file = "%s"\n''' % cell_fn
+    s += ''')\n'''
+    s += '''\n'''
+    s += '''write(\n'''
+    s += '''    colnames(mtx),\n'''
+    s += '''    file = "%s"\n''' % gene_fn
+    s += ''')\n'''
+    s += '''\n'''
+    s += '''write.table(\n'''
+    s += '''    mtx,\n'''
+    s += '''    file = "%s",\n''' % mtx_fn
+    s += '''    row.names = FALSE,\n'''
+    s += '''    col.names = FALSE\n'''
+    s += ''')\n'''
+    s += '''\n'''
+    
+    script_fn = os.path.join(tmp_dir, "extract_infercnv.R")
+    with open(script_fn, "w") as fp:
+        fp.write(s)
+
+        
+    # run the R script to save expression matrix into file.
+    if verbose:
+        info("run the R script to save expression matrix into file ...")
+
+    exe_cmdline("Rscript %s" % script_fn)
+
+    
+    # load matrix into anndata.
+    if verbose:
+        info("load matrix into anndata and save into .h5ad file ...")
+        
+    barcodes = pd.read_csv(cell_fn, header = None)
+    barcodes.columns = ["cell"]
+    
+    genes = pd.read_csv(gene_fn, header = None)
+    genes.columns = ["gene"]
+    
+    mtx = np.loadtxt(mtx_fn)
+    
+    adata = ad.AnnData(
+        X = mtx,
+        obs = barcodes,
+        var = genes
+    )
+    adata.write_h5ad(out_fn)
+    
+    if verbose:
+        info("saved adata shape = %s." % str(adata.shape))
+
 def infercnv_predict_and_save(
-    adata_path,
+    rds_path,
     output_dir='output'
 ):
     """
@@ -210,8 +316,8 @@ def infercnv_predict_and_save(
 
     Parameters:
     -----------
-    adata_path : str
-        Path to .h5ad file containing the expression matrix in adata.X.
+    rds_path : str
+        Path to rds file containing the expression matrix in adata.X.
     output_dir : str
         Directory to save ground truth (if true_col provided) and predictions TSV files (default: 'output').
     true_col : str, optional
@@ -223,11 +329,16 @@ def infercnv_predict_and_save(
         Saves TSV files: ground_truth.tsv (if true_col provided) and infercnv_predictions.tsv.
     """
     # Validate inputs
-    if not os.path.exists(adata_path):
+    if not os.path.exists(rds_path):
         raise ValueError(f"AnnData file not found at {adata_path}")
 
+    # convert rds to adata
+    infercnv_tmp_dir = os.path.join(output_dir, 'infercnv_tmp')
+    infercnv_adata_path = os.path.join(infercnv_tmp_dir, 'infercnv_tmp.h5ad')
+    extract_infercnv(rds_path, infercnv_adata_path, infercnv_tmp_dir)
+
     # Read AnnData
-    adata = ad.read_h5ad(adata_path)
+    adata = ad.read_h5ad(infercnv_adata_path)
 
     # Perform tumor classification
     adata = tumor_classify(adata, 
@@ -248,10 +359,6 @@ def infercnv_predict_and_save(
     print(f"Predictions saved to {predictions_path}")
 
 # numbat
-import pandas as pd
-import numpy as np
-from sklearn.cluster import KMeans
-import os
 
 def numbat_process_predictions(
     tsv_path,
@@ -353,8 +460,6 @@ def numbat_process_predictions(
     print(f"Number of normal cells: {n_cells - n_tumor}")
 
 # calicost
-import pandas as pd
-import os
 
 def copykat_process_predictions(
     tsv_path,
@@ -416,10 +521,6 @@ def copykat_process_predictions(
     print(f"Number of normal cells: {n_cells - n_tumor}")
 
 # calicost
-import pandas as pd
-import numpy as np
-from sklearn.cluster import KMeans
-import os
 
 def predict_tumor_calicost(
     tsv_path,
@@ -524,9 +625,6 @@ def predict_tumor_calicost(
 
 
 # merge data
-import pandas as pd
-import os
-
 def merge_predictions_to_tsv(
     tools,
     out_dir,
@@ -631,16 +729,6 @@ def merge_predictions_to_tsv(
 
 
 # evaluate
-import os
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score,
-    f1_score, adjusted_rand_score, confusion_matrix
-)
-
 
 def evaluate_predictions(
     input_df,
