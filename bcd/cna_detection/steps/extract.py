@@ -63,7 +63,19 @@ def run_extract(
         res_dir = os.path.join(out_dir, tid)
         os.makedirs(res_dir, exist_ok = True)
         
-        if tid == "copykat":
+        if tid == "calicost":
+            out_fn_list = [os.path.join(out_dir, "%s.%s.%s.h5ad" % \
+                (out_prefix, tid, cna_type)) for cna_type in cna_type_list]
+            tool.extract(
+                out_fn_list = out_fn_list,
+                cna_type_list = cna_type_list,
+                tmp_dir = res_dir,
+                verbose = verbose
+            )
+            for cna_type, fn in zip(cna_type_list, out_fn_list):
+                out_fns[cna_type].append(fn)
+
+        elif tid == "copykat":
             fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, tid))
             tool.extract(
                 out_fn = fn,
@@ -123,18 +135,6 @@ def run_extract(
                 cna_type_list = cna_type_list,
                 tmp_dir = res_dir,
                 verbose = verbose
-            )
-            for cna_type, fn in zip(cna_type_list, out_fn_list):
-                out_fns[cna_type].append(fn)
-        
-        elif tid == "calicost":
-            out_fn_list = [os.path.join(out_dir, "%s.%s.%s.h5ad" % \
-                (out_prefix, tid, cna_type)) for cna_type in cna_type_list]
-            tool.extract(
-                out_fn_list=out_fn_list,
-                cna_type_list=cna_type_list,
-                tmp_dir=res_dir,
-                verbose=verbose
             )
             for cna_type, fn in zip(cna_type_list, out_fn_list):
                 out_fns[cna_type].append(fn)
