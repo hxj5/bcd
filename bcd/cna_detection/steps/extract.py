@@ -17,7 +17,6 @@ def run_extract(
     tool_list, out_dir, out_prefix, 
     cna_type_list, 
     gene_anno_fn, 
-    numbat_mtx_how = "expand", 
     verbose = True
 ):
     """Extract CNA expression or probability matrix into adata object.
@@ -34,12 +33,6 @@ def run_extract(
         A list of CNA types, each in {"gain", "loss", "loh"}.
     gene_anno_fn : str
         File storing gene annotations.
-    numbat_mtx_how : {"expand", "raw"}
-        How to process the extracted Numbat matrix before overlap step.
-        - "expand": 
-            expand the Numbat matrix to transcriptomics scale and fill value 0;
-        - "raw":
-            use the raw Numbat matrix.
     verbose : bool, default True
         Whether to show detailed logging information.
         
@@ -109,7 +102,6 @@ def run_extract(
                 cna_type_list = cna_type_list,
                 gene_anno_fn = gene_anno_fn,
                 tmp_dir = res_dir,
-                mtx_how = numbat_mtx_how,
                 verbose = verbose     
             )
             for cna_type, fn in zip(cna_type_list, out_fn_list):

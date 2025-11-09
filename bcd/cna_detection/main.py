@@ -25,7 +25,6 @@ def bcd_main(
     cell_anno_fn,
     gene_anno_fn,
     cna_type_list = None,
-    numbat_mtx_how = "expand",
     overlap_how = "isec-cells",
     max_n_cutoff = 1000,
     fig_width = 4.25,
@@ -70,12 +69,6 @@ def bcd_main(
         A list of CNA types.
         None means using all available CNA types, including "gain",
         "loss", and "loh".
-    numbat_mtx_how : {"expand", "raw"}
-        How to process the extracted Numbat matrix before overlap step.
-        - "expand": 
-            expand the Numbat matrix to transcriptomics scale and fill value 0;
-        - "raw":
-            use the raw Numbat matrix.
     overlap_how : {"isec-cells", isec-both"}
         How to subset the tool matrices given the overlap cells and genes.
         - "isec-cells"
@@ -116,7 +109,6 @@ def bcd_main(
     conf.cell_anno_fn = cell_anno_fn
     conf.gene_anno_fn = gene_anno_fn
     conf.cna_type_list = cna_type_list
-    conf.numbat_mtx_how = numbat_mtx_how
     conf.overlap_how = overlap_how
     conf.max_n_cutoff = max_n_cutoff
     
@@ -193,7 +185,6 @@ def bcd_core(conf):
         out_prefix = "extract",
         cna_type_list = conf.cna_type_list,
         gene_anno_fn = conf.gene_anno_fn,
-        numbat_mtx_how = conf.numbat_mtx_how,
         verbose = conf.verbose
     )
     

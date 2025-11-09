@@ -16,11 +16,17 @@ from ..utils.io import load_gene_anno, save_h5ad
 
         
 class Numbat(Tool):
-    def __init__(self, obj_path):
+    def __init__(self, obj_path, mtx_how = 'expand'):
         """
         obj_path : str
             File storing the Numbat final results.
             Typically using the "joint_post_2.tsv".
+        mtx_how : {"expand", "raw"}
+            How to process the extracted Numbat matrix before overlap step.
+            - "expand": 
+                expand the Numbat matrix to transcriptomics scale and fill value 0;
+            - "raw":
+                use the raw Numbat matrix.
         """
         super().__init__(
             tid = "Numbat",
@@ -29,6 +35,7 @@ class Numbat(Tool):
             has_loss = True,
             has_loh = True
         )
+        self.mtx_how = mtx_how
 
         
     def extract(
@@ -36,8 +43,7 @@ class Numbat(Tool):
         out_fn_list, 
         cna_type_list, 
         gene_anno_fn, 
-        tmp_dir, 
-        mtx_how = "expand",
+        tmp_dir,
         verbose = False
     ):
         """Extract Numbat probability matrices and convert them to python objects.
@@ -52,12 +58,6 @@ class Numbat(Tool):
             File storing gene annotations.
         tmp_dir : str
             The folder to store temporary data.
-        mtx_how : {"expand", "raw"}
-            How to process the extracted Numbat matrix before overlap step.
-            - "expand": 
-                expand the Numbat matrix to transcriptomics scale and fill value 0;
-            - "raw":
-                use the raw Numbat matrix.
         verbose : bool, default False
             Whether to show detailed logging information.
 
@@ -66,6 +66,7 @@ class Numbat(Tool):
         Void.
         """
         obj_fn = self.obj_path
+        mtx_how = self.mtx_how
         
         # check args.
         if verbose:
