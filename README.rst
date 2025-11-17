@@ -60,14 +60,14 @@ An example is:
 
 .. code-block:: python
 
-    from bcd.cna_detection import bcd_main, InferCNVArgs, NumbatArgs
+    from bcd.cna_detection import cna_detection_main, InferCNV, Numbat
 
-    infercnv_args = InferCNVArgs(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
-    numbat_args = NumbatArgs(obj_fn = "./numbat/joint_post_2.tsv")
+    infercnv = InferCNV(obj_path = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
+    numbat = Numbat(obj_path = "./numbat/joint_post_2.tsv")
 
-    ret, res = bcd_main(
+    ret, res = cna_detection_main(
         sid = "test",
-        args_list = [infercnv_args, numbat_args],
+        tool_list = [infercnv, numbat],
         out_dir = "./out",
         truth_fn = "./data/truth.tsv",
         cell_anno_fn = "./data/cell_anno.tsv",

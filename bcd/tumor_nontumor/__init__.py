@@ -4,5 +4,6 @@
 
 # main
 from .main import run_tumor_prediction_pipeline as tumor_nontumor_main
+from .main import merge_predict
 
-__all__ = ['tumor_nontumor_main']
+__all__ = ['tumor_nontumor_main', 'merge_predict']

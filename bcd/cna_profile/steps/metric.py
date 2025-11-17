@@ -14,7 +14,7 @@ from ..utils.io import load_h5ad
 
 
 def run_metric(
-    args_list,
+    tool_list,
     out_dir,
     out_prefix,
     tool_fn_list,
@@ -27,8 +27,8 @@ def run_metric(
     
     Parameters
     ----------
-    args_list : list of ToolArgs
-        A list of tool-specific :class:`~.args.ToolArgs` objects.
+    tool_list : list of Tool
+        A list of tool-specific :class:`~.tool.Tool` objects.
     out_dir : str
         The output folder.
     out_prefix : str
@@ -53,7 +53,7 @@ def run_metric(
         Results.
     """
     # check args.
-    assert len(args_list) == len(tool_fn_list)
+    assert len(tool_list) == len(tool_fn_list)
     for fn in tool_fn_list:
         assert_e(fn)
     os.makedirs(out_dir, exist_ok = True)
@@ -70,10 +70,10 @@ def run_metric(
     df_metric = None
     auroc_list = []
     auprc_list = []
-    for i, (args, tool_fn, truth_fn) in enumerate(
-        zip(args_list, tool_fn_list, truth_fn_list)):
+    for i, (tool, tool_fn, truth_fn) in enumerate(
+        zip(tool_list, tool_fn_list, truth_fn_list)):
         
-        tid = args.tid
+        tid = tool.tid
         if verbose:
             info("process %s ..." % tid)
             
@@ -129,7 +129,7 @@ def run_metric(
     
     df_auroc = pd.DataFrame(
         data = dict(
-            tool = [args.tid for args in args_list],
+            tool = [tool.tid for tool in tool_list],
             AUROC = auroc_list
         ))
     auroc_fn = os.path.join(out_dir, "%s.%s.auroc.tsv" % \
@@ -141,7 +141,7 @@ def run_metric(
     
     df_auprc = pd.DataFrame(
         data = dict(
-            tool = [args.tid for args in args_list],
+            tool = [tool.tid for tool in tool_list],
             AUPRC = auprc_list
         ))
     auprc_fn = os.path.join(out_dir, "%s.%s.auprc.tsv" % \

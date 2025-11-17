@@ -2,10 +2,11 @@
 
 
 from . import app
-from . import cna_detection
+from . import cna_profile
+from . import subclonal_structure
+from . import tumor_nontumor
 
 from .app import VERSION
-from .cna_detection.main import bcd_main as cna_detection_main
 
 
 # what `__all__` does:

@@ -19,13 +19,12 @@ from ..app import APP, VERSION
 
 def bcd_main(
     sid,
-    args_list,
+    tool_list,
     out_dir,
     truth_fn,
     cell_anno_fn,
     gene_anno_fn,
     cna_type_list = None,
-    numbat_mtx_how = "expand",
     overlap_how = "isec-cells",
     max_n_cutoff = 1000,
     fig_width = 4.25,
@@ -42,8 +41,8 @@ def bcd_main(
     ----------
     sid : str
         Sample ID.
-    args_list : list of ToolArgs
-        A list of tool-specific :class:`~.args.ToolArgs` objects.
+    tool_list : list of Tool
+        A list of tool-specific :class:`~.tool.Tool` objects.
     out_dir : str
         The output folder.
     truth_fn : str
@@ -70,12 +69,6 @@ def bcd_main(
         A list of CNA types.
         None means using all available CNA types, including "gain",
         "loss", and "loh".
-    numbat_mtx_how : {"expand", "raw"}
-        How to process the extracted Numbat matrix before overlap step.
-        - "expand": 
-            expand the Numbat matrix to transcriptomics scale and fill value 0;
-        - "raw":
-            use the raw Numbat matrix.
     overlap_how : {"isec-cells", isec-both"}
         How to subset the tool matrices given the overlap cells and genes.
         - "isec-cells"
@@ -110,13 +103,12 @@ def bcd_main(
     conf = Config()
     
     conf.sid = sid
-    conf.args_list = args_list
+    conf.tool_list = tool_list
     conf.out_dir = out_dir
     conf.truth_fn = truth_fn
     conf.cell_anno_fn = cell_anno_fn
     conf.gene_anno_fn = gene_anno_fn
     conf.cna_type_list = cna_type_list
-    conf.numbat_mtx_how = numbat_mtx_how
     conf.overlap_how = overlap_how
     conf.max_n_cutoff = max_n_cutoff
     
@@ -188,12 +180,11 @@ def bcd_core(conf):
     res_dir = os.path.join(pp_dir, "tools")
     os.makedirs(res_dir, exist_ok = True)
     extract_res = run_extract(
-        args_list = conf.args_list, 
+        tool_list = conf.tool_list, 
         out_dir = res_dir,
         out_prefix = "extract",
         cna_type_list = conf.cna_type_list,
         gene_anno_fn = conf.gene_anno_fn,
-        numbat_mtx_how = conf.numbat_mtx_how,
         verbose = conf.verbose
     )
     
@@ -221,16 +212,16 @@ def bcd_core(conf):
     for i, cna_type in enumerate(conf.cna_type_list):
         info("processing '%s' ..." % cna_type)
         
-        args_list, tool_fn_list = [], []
-        for args, fn in zip(conf.args_list, extract_res["out_fns"][cna_type]):
-            if args.has_cna_type(cna_type) is True:
-                args_list.append(args)
+        tool_list, tool_fn_list = [], []
+        for tool, fn in zip(conf.tool_list, extract_res["out_fns"][cna_type]):
+            if tool.has_cna_type(cna_type) is True:
+                tool_list.append(tool)
                 tool_fn_list.append(fn)
         
         res = bcd_cna_type(
             sid = conf.sid,
             cna_type = cna_type,
-            args_list = args_list,
+            tool_list = tool_list,
             tool_fn_list = tool_fn_list,
             out_dir = cna_type_dirs[i],
             truth_fn = truth_res["out_fn_list"][i],
@@ -254,9 +245,9 @@ def bcd_core(conf):
 
 def bcd_init(conf):
     # check args.
-    assert len(conf.args_list) > 0
-    for args in conf.args_list:
-        assert_e(args.obj_fn)
+    assert len(conf.tool_list) > 0
+    for tool in conf.tool_list:
+        assert_e(tool.obj_path)
 
     os.makedirs(conf.out_dir, exist_ok = True)
     assert_e(conf.truth_fn)

@@ -16,7 +16,7 @@ from .utils.base import assert_e
 def bcd_cna_type(
     sid,
     cna_type,
-    args_list,
+    tool_list,
     tool_fn_list,
     out_dir,
     truth_fn,
@@ -38,8 +38,8 @@ def bcd_cna_type(
         Sample ID.
     cna_type : str
         CNA types, one of {"gain", "loss", "loh"}.
-    args_list : list of ToolArgs
-        A list of tool-specific :class:`~.args.ToolArgs` objects.
+    tool_list : list of Tool
+        A list of tool-specific :class:`~.tool.Tool` objects.
     tool_fn_list : list of str
         A list of tool-specific adata files storing cell x gene matrices.
     out_dir : str
@@ -63,12 +63,12 @@ def bcd_cna_type(
         Results.
     """
     # check args.
-    if len(args_list) <= 0:
+    if len(tool_list) <= 0:
         info("%s: no input tool data, skip all next steps ..." % cna_type)
         return(dict())
 
     assert cna_type in ("gain", "loss", "loh")
-    assert len(args_list) == len(tool_fn_list)
+    assert len(tool_list) == len(tool_fn_list)
     for fn in tool_fn_list:
         assert_e(fn)
     os.makedirs(out_dir, exist_ok = True)
@@ -82,7 +82,7 @@ def bcd_cna_type(
     res_dir = os.path.join(out_dir, "%d_overlap" % step)
     os.makedirs(res_dir, exist_ok = True)
     overlap_res = run_overlap(
-        args_list = args_list, 
+        tool_list = tool_list, 
         tool_fn_list = tool_fn_list,
         truth_fn = truth_fn,
         overlap_how = overlap_how,
@@ -99,7 +99,7 @@ def bcd_cna_type(
     res_dir = os.path.join(out_dir, "%d_metric" % step)
     os.makedirs(res_dir, exist_ok = True)
     metric_res = run_metric(
-        args_list = args_list,
+        tool_list = tool_list,
         out_dir = res_dir,
         out_prefix = "metric",
         tool_fn_list = overlap_res["out_tool_fn_list"],
