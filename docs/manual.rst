@@ -24,12 +24,12 @@ An example is:
 
 .. code-block:: python
 
-    from bcd.cna_detection import cna_detection_main, InferCNV, Numbat
+    from bcd.cna_profile import cna_profile_main, InferCNV, Numbat
 
     infercnv = InferCNV(obj_path = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
     numbat = Numbat(obj_path = "./numbat/joint_post_2.tsv")
 
-    ret, res = cna_detection_main(
+    ret, res = cna_profile_main(
         sid = "test",
         tool_list = [infercnv, numbat],
         out_dir = "./out",
