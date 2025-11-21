@@ -62,7 +62,6 @@ def run_extract(
             tool.extract(
                 out_fn_list = out_fn_list,
                 cna_type_list = cna_type_list,
-                tmp_dir = res_dir,
                 verbose = verbose
             )
             for cna_type, fn in zip(cna_type_list, out_fn_list):
@@ -72,7 +71,6 @@ def run_extract(
             fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, tid))
             tool.extract(
                 out_fn = fn,
-                tmp_dir = res_dir,
                 verbose = verbose
             )
             for cna_type in cna_type_list:
@@ -113,7 +111,6 @@ def run_extract(
             tool.extract(
                 out_fn_list = out_fn_list,
                 cna_type_list = cna_type_list,
-                tmp_dir = res_dir,
                 verbose = verbose
             )
             for cna_type, fn in zip(cna_type_list, out_fn_list):
@@ -125,7 +122,6 @@ def run_extract(
             tool.extract(
                 out_fn_list = out_fn_list,
                 cna_type_list = cna_type_list,
-                tmp_dir = res_dir,
                 verbose = verbose
             )
             for cna_type, fn in zip(cna_type_list, out_fn_list):

@@ -16,20 +16,19 @@ from ..utils.io import load_gene_anno, save_h5ad
 
 
 class CopyKAT(Tool):
-    def __init__(self, obj_path):
+    def __init__(self, expr_mtx_fn):
         super().__init__(
             tid = "CopyKat",
-            obj_path = obj_path,
             has_gain = True,
             has_loss = True,
             has_loh = False
         )
+        self.expr_mtx_fn = expr_mtx_fn
 
 
     def extract(
         self,
         out_fn,
-        tmp_dir,
         verbose = False
     ):
         """
@@ -38,9 +37,7 @@ class CopyKAT(Tool):
         Parameters
         ----------
         out_fn : str
-            Output .h5ad file to save the matrix.
-        tmp_dir : str
-            The folder to store temporary data. 
+            Output .h5ad file to save the matrix. 
         verbose : bool, default False
             Whether to print verbose output.
 
@@ -49,28 +46,39 @@ class CopyKAT(Tool):
         dict
             {"mtx": cell x gene matrix (numpy array), "overlap": None}
         """
-        obj_fn = self.obj_path
-        
-        if verbose:
-            info(f"Reading CopyKAT file: {obj_fn}")
-        assert_e(obj_fn)
-
-        os.makedirs(tmp_dir, exist_ok = True)
-
-        mtx = pd.read_csv(obj_fn, sep = "\t", header = 0, dtype = str)
-        mtx.index = mtx["hgnc_symbol"]
-        mtx = mtx.iloc[:, 7:]              # Remove first 7 columns.
-        mtx = mtx.T                        # cell x gene
-
-        if verbose:
-            info(f"CopyKAT matrix shape: {mtx.shape}")
-
-        adata = ad.AnnData(
-            X = mtx.values.astype(float),
-            obs = pd.DataFrame(data = dict(cell = mtx.index)),
-            var = pd.DataFrame(data = dict(gene = mtx.columns))
+        return extract_cna_expression(
+            expr_mtx_fn = self.expr_mtx_fn,
+            out_fn = out_fn,
+            verbose = verbose
         )
-        save_h5ad(adata, out_fn)
+
+
+
+def extract_cna_expression(
+    expr_mtx_fn,
+    out_fn,
+    verbose = False
+):
+    if verbose:
+        info(f"Reading CopyKAT file: {expr_mtx_fn}")
+    assert_e(expr_mtx_fn)
+
+    mtx = pd.read_csv(expr_mtx_fn, sep = "\t", header = 0, dtype = str)
+    mtx.index = mtx["hgnc_symbol"]
+    mtx = mtx.iloc[:, 7:]              # Remove first 7 columns.
+    mtx = mtx.T                        # cell x gene
+
+    if verbose:
+        info(f"CopyKAT matrix shape: {mtx.shape}")
+
+    adata = ad.AnnData(
+        X = mtx.values.astype(float),
+        obs = pd.DataFrame(data = dict(cell = mtx.index)),
+        var = pd.DataFrame(data = dict(gene = mtx.columns))
+    )
+    save_h5ad(adata, out_fn)
+    
+    if verbose:
+        info(f"Saved AnnData to {out_fn}")
         
-        if verbose:
-            info(f"Saved AnnData to {out_fn}")
+    return(out_fn)

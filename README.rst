@@ -62,8 +62,8 @@ An example is:
 
     from bcd.cna_profile import cna_profile_main, InferCNV, Numbat
 
-    infercnv = InferCNV(obj_path = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
-    numbat = Numbat(obj_path = "./numbat/joint_post_2.tsv")
+    infercnv = InferCNV(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
+    numbat = Numbat(joint_post_fn = "./numbat/joint_post_2.tsv")
 
     ret, res = cna_profile_main(
         sid = "test",

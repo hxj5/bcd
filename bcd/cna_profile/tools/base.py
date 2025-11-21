@@ -6,11 +6,9 @@ class Tool:
     def __init__(
         self, 
         tid = None,
-        obj_path = None,
         has_gain = True, has_loss = True, has_loh = True
     ):
         self.tid = tid
-        self.obj_path = obj_path
         self.__has_cna_type = {
             'gain': has_gain,
             'loss': has_loss,
