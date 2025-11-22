@@ -8,6 +8,7 @@ import os
 import pandas as pd
 from logging import info, error
 from logging import warning as warn
+from scipy.cluster.hierarchy import linkage, fcluster
 from sklearn.cluster import KMeans
 from .base import Tool
 from ..utils.base import assert_e
@@ -16,130 +17,243 @@ from ..utils.io import save_h5ad
 
 
 class InferCNV(Tool):
-    def __init__(
-        self,
-        obj_path, 
-        out_dir,
-        proportion_col = 'tumor_proportion', 
-        delimiter = '\t'
-    ):
+    def __init__(self, obj_fn):
         """InferCNV object.
         
         Parameters
         ----------
-        obj_path : str
-            Path to CalicoST TSV file containing columns: 
-            ``BARCODES``, ``clone_label``, and ``tumor_proportion``.
-        proportion_col : str, default 'tumor_proportion'
-            Column name in `obj_path` for tumor proportions.
-        delimiter : str, default: '\t'
-            Delimiter for TSV file.
+        obj_fn : str
+            File storing the inferCNV object. 
+            Typically using the "MCMC_inferCNV_obj.rds".
         """
-        super().__init__(
-            tid = "CalicoST",
-            obj_path = obj_path,
-            out_dir = out_dir
-        )
-        self.proportion_col = proportion_col
-        self.delimiter = delimiter
-
+        super().__init__(tid = "inferCNV")
+        self.obj_fn = obj_fn
+        
         
     def predict(
         self,
-        n_clusters = 2,
-        random_state = 42,
-        verbose = False
+        out_dir,
+        ref_expr = 1,
+        linkage_method = 'ward',
+        linkage_metric = 'euclidean',
+        fcluster_criterion = 'maxclust',
+        cna_score_how = 'mad'        
     ):
-        """Predict tumor cells from CalicoST output.
+        return predict_tumor_from_expression(
+            obj_fn = self.obj_fn,
+            out_dir = out_dir,
+            ref_expr = ref_expr,
+            linkage_method = linkage_method,
+            linkage_metric = linkage_metric,
+            fcluster_criterion = fcluster_criterion,
+            cna_score_how = cna_score_how
+        )
+
+
+
+def predict_tumor_from_expression(
+    obj_fn,
+    out_fn,
+    tmp_dir,
+    ref_expr = 1,
+    linkage_method = 'ward',
+    linkage_metric = 'euclidean',
+    fcluster_criterion = 'maxclust',
+    cna_score_how = 'mad'
+):
+    """Predict tumor cells from inferCNV output.
+    
+    Read AnnData, perform tumor classification using hierarchical 
+    clustering on adata.X, and save into TSV file: 
+    - columns `barcode`, `prediction`.
+    
+    Saves TSV files: infercnv_predictions.tsv.
+    """
+    # Check args.
+    assert_e(obj_fn)
+    os.makedirs(tmp_dir, exist_ok = True)
+    
+    
+    # convert rds to adata
+    adata_fn = os.path.join(tmp_dir, 'r2py.h5ad')
+    extract_cna_expression(obj_fn, adata_fn, tmp_dir = tmp_dir)
+    
+    
+    # Perform tumor classification
+    adata = ad.read_h5ad(adata_fn)
+    X = adata.X.copy()
+    tumor_pred, scores = __predict_tumor_from_expression(
+        X = X, 
+        ref_expr = ref_expr,
+        linkage_method = linkage_method,
+        linkage_metric = linkage_metric,
+        fcluster_criterion = fcluster_criterion,
+        cna_score_how = cna_score_how
+    )
+    
+    
+    # Save predictions TSV
+    df = pd.DataFrame({
+        'barcode': adata.obs['cell'],
+        'prediction': tumor_pred,
+        'cna_score': scores
+    })
+    df.to_csv(out_fn, sep = '\t', index = False)
+    info(f"Predictions saved to {out_fn}.")
+    
+    return(out_fn)
+
+
+
+def extract_cna_expression(obj_fn, out_fn, tmp_dir, verbose = False):
+    """Extract inferCNV expression matrix and convert it to python object.
+    
+    Parameters
+    ----------
+    out_fn : str
+        Output ".h5ad" file storing the cell x gene matrix.
+    tmp_dir : str
+        The folder to store temporary data.
+    verbose : bool, default False
+        Whether to show detailed logging information.
+    
+    Returns
+    -------
+    str
+        Converted adata file.
+    """
+    # check args.
+    if verbose:
+        info("check args ...")
+    assert_e(obj_fn)
+    os.makedirs(tmp_dir, exist_ok = True)
+    
+    
+    # generate R scripts.
+    if verbose:
+        info("generate R scripts ...")
+    cell_fn = os.path.join(tmp_dir, "barcodes.tsv")
+    gene_fn = os.path.join(tmp_dir, "genes.tsv")
+    mtx_fn = os.path.join(tmp_dir, "matrix.mtx")
+    
+    s  = ""
+    s += '''# extract cell x gene expression matrix from infercnv output.\n'''
+    s += '''\n'''
+    s += '''obj <- readRDS("%s")\n''' % obj_fn
+    s += '''mtx <- obj@expr.data\n'''
+    s += '''mtx <- t(mtx)         # cell x gene matrix\n'''
+    s += '''\n'''  
+    s += '''write(\n'''
+    s += '''    rownames(mtx),\n'''
+    s += '''    file = "%s"\n''' % cell_fn
+    s += ''')\n'''
+    s += '''\n'''
+    s += '''write(\n'''
+    s += '''    colnames(mtx),\n'''
+    s += '''    file = "%s"\n''' % gene_fn
+    s += ''')\n'''
+    s += '''\n'''
+    s += '''write.table(\n'''
+    s += '''    mtx,\n'''
+    s += '''    file = "%s",\n''' % mtx_fn
+    s += '''    row.names = FALSE,\n'''
+    s += '''    col.names = FALSE\n'''
+    s += ''')\n'''
+    s += '''\n'''
+    
+    script_fn = os.path.join(tmp_dir, "extract_infercnv.R")
+    with open(script_fn, "w") as fp:
+        fp.write(s)
+    
+    
+    # run the R script to save expression matrix into file.
+    if verbose:
+        info("run the R script to save expression matrix into file ...")
+    exe_cmdline("Rscript %s" % script_fn)
+    
+    
+    # load matrix into anndata.
+    if verbose:
+        info("load matrix into anndata and save into .h5ad file ...")
+    barcodes = pd.read_csv(cell_fn, header = None)
+    barcodes.columns = ["cell"]
+    genes = pd.read_csv(gene_fn, header = None)
+    genes.columns = ["gene"]
+    
+    mtx = np.loadtxt(mtx_fn)
+    adata = ad.AnnData(
+        X = mtx,
+        obs = barcodes,
+        var = genes
+    )
+    save_h5ad(adata, out_fn)
+    if verbose:
+        info("saved adata shape = %s." % str(adata.shape))
         
-        Predict tumor cells from CalicoST output using K-means on 
-        `tumor_proportion`, excluding cells with empty tumor_proportion,
-        and save to a TSV file with columns 'barcode' and 'prediction' 
-        ('tumor' or 'normal').
-
-        Parameters:
-        -----------
-        n_clusters : int
-            Number of clusters for K-means (default: 2 for tumor/non-tumor).
-        random_state : int
-            Random seed for K-means (default: 42).
-
-        Returns:
-        --------
-        None
-            Saves a TSV file with columns: barcode, prediction ('tumor' or 
-            'normal') for cells with valid tumor_proportion.
-        """
-        tsv_path = self.obj_path
-        out_dir = self.out_dir
-        proportion_col = self.proportion_col
-        delimiter = self.delimiter
-
-
-        # Check args.
-        if not out_dir:
-            raise ValueError("out_dir must be provided to save predictions.")
-
-        df = pd.read_csv(tsv_path, delimiter = delimiter)
-
-        required_cols = ['BARCODES', 'clone_label', proportion_col]
-        if not all(col in df.columns for col in required_cols):
-            raise ValueError(f"TSV must contain columns: {required_cols}")
-
-
-        # Filter out rows with empty tumor_proportion
-        initial_n_cells = len(df)
-        df = df.dropna(subset=[proportion_col])
-        n_cells = len(df)
-        n_removed = initial_n_cells - n_cells
-        if n_removed > 0:
-            warn("Removed %d cells with empty '%s' values." %  \
-                (n_removed, proportion_col))
-        if n_cells == 0:
-            error("No cells remain after removing empty '%s' values." % \
-                  proportion_col)
-            raise ValueError
-
-            
-        # Apply K-means clustering
-        tumor_proportions = df[proportion_col].values.reshape(-1, 1)
-        kmeans = KMeans(n_clusters = n_clusters, random_state = random_state)
-        cluster_labels = kmeans.fit_predict(tumor_proportions)
-
-        
-        # Identify tumor cluster (higher mean tumor_proportion)
-        mean_scores = np.zeros(n_clusters)
-        for cluster in range(n_clusters):
-            cluster_cells = cluster_labels == cluster
-            mean_scores[cluster] = np.mean(tumor_proportions[cluster_cells])
-        tumor_cluster = np.argmax(mean_scores)
-        predictions = np.where(
-            cluster_labels == tumor_cluster, 'tumor', 'normal')
-
-        
-        # Compute threshold (midpoint between cluster centers)
-        cluster_centers = kmeans.cluster_centers_.flatten()
-        low_center, high_center = sorted(cluster_centers)
-        threshold = (low_center + high_center) / 2
-
-        result_df = pd.DataFrame({
-            'barcode': df['BARCODES'],
-            'prediction': predictions
-        })
-
-        
-        # Save to TSV
-        fn = os.path.join(
-            out_dir, '%s_predictions.tsv' % self.tid.lower())
-        result_df.to_csv(predictions_path, sep = '\t', index = False)
-        info(f"Predictions saved to '{fn}'.")
-
-        
-        # Print summary
-        n_tumor = np.sum(predictions == 'tumor')
-        info(f"Processed {n_cells} cells after filtering.")
-        info(f"CalicoST tumor_proportion cluster centers: {cluster_centers}")
-        info(f"Selected threshold: {threshold:.4f} "   \
-             "(cells > threshold classified as tumor)")
-        info(f"Number of tumor cells: {n_tumor}")
-        info(f"Number of non-tumor cells: {n_cells - n_tumor}")
+    return(out_fn)
+    
+    
+    
+def __predict_tumor_from_expression(
+    X, 
+    ref_expr = 1,
+    linkage_method = 'ward',
+    linkage_metric = 'euclidean',
+    fcluster_criterion = 'maxclust',
+    cna_score_how = 'mad'
+):
+    """Cluster cells based on expression matrix using hierarchical clustering.
+    
+    Cluster cells based on expression matrix using hierarchical clustering 
+    with (by default) Ward linkage and Euclidean distance, forcing 2 clusters.
+    Label the cluster with the lowest aberration score
+    (mean absolute deviation from median expression) as 'normal' and 
+    the other as 'tumor'.
+    
+    Parameters
+    ----------
+    X : matrix-like
+        The cell x gene expression matrix.
+    ref_expr : float
+        The reference expression value for calculating the deviation.
+        Typically use the median expression value.
+    
+    Returns
+    -------
+    np.array
+        The predicted labels: 'normal' or 'tumor'.
+    """
+    n_clusters = 2
+    n_cells, n_genes = X.shape
+    
+    # Apply hierarchical clustering with Ward linkage and Euclidean distance
+    Z = linkage(X, method = linkage_method, metric = linkage_metric)
+    cluster_labels = fcluster(Z, t = n_clusters, criterion = fcluster_criterion)
+    cluster_labels = cluster_labels - 1      # To make labels: 0 or 1
+    
+    
+    # Assign cluster labels based on aberration score.
+    # - Compute aberration score as mean absolute deviation from
+    #   median expression per gene.
+    # ref_expr = np.median(X, axis = 0)      # Median per gene
+    scores = None
+    if cna_score_how == 'mad':
+        scores = np.mean(np.abs(X - ref_expr), axis = 1)   # Shape: (n_cells,)
+    elif cna_score_how == 'md':
+        scores = np.mean(X - ref_expr, axis = 1)   # Shape: (n_cells,)
+    else:
+        raise ValueError("unknown cna_score_how '%s'!" % cna_score_how)
+    mean_scores = [np.mean(scores[cluster_labels == i]) for i in [0, 1]]
+    normal_cluster = np.argmin(mean_scores)
+    tumor_pred = np.where(cluster_labels == normal_cluster, 'normal', 'tumor')
+    
+    
+    # Print summary
+    info(f"Processed {n_cells} cells and {n_genes} genes.")
+    info(f"Mean aberration scores per cluster: {mean_scores}")
+    info(f"Cluster labels: {['normal', 'tumor']}")
+    for label in np.unique(tumor_pred):
+        count = np.sum(tumor_pred == label)
+    info(f"Number of cells in {label}: {count}")
+    
+    return (tumor_pred, scores)

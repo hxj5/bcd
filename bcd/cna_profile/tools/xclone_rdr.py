@@ -23,7 +23,7 @@ class XCloneRDR(Tool):
             If None, do not use RDR.
         """
         super().__init__(
-            tid = "XCloneRDR",
+            tid = "XClone_RDR",
             has_gain = True,
             has_loss = True,
             has_loh = False            

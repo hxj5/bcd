@@ -20,8 +20,8 @@ class InferCNV(Tool):
     def __init__(self, obj_fn):
         """
         obj_fn : str
-            File storing the inferCNV object. Typically using the
-            "BayesNetOutput.HMMi6.hmm_mode-samples/MCMC_inferCNV_obj.rds".
+            File storing the inferCNV object.
+            Typically using the "MCMC_inferCNV_obj.rds".
         """
         super().__init__(
             tid = "inferCNV", 

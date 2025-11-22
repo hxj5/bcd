@@ -14,37 +14,19 @@ from ..utils.io import save_h5ad
 
 
 class CalicoST(Tool):
-    def __init__(self, data_dir = None, cnv_file = None, clone_file = None):
-        """Initialize CalicoST tool with directory containing input files.
-        
-        Parameters
-        ----------
-        data_dir : str
-            Directory containing 'cnv_genelevel.tsv' and 'clone_labels.tsv'
-            files.
-        """
+    def __init__(self, cnv_fn, clone_fn):
+        """Initialize CalicoST."""
         super().__init__(
             tid = "CalicoST",
             has_gain = True,
             has_loss = True,
             has_loh = True
         )
-        self.data_dir = data_dir
-        self.cnv_file = cnv_file
-        self.clone_file = clone_file
-        if data_dir is not None:
-            assert cnv_file is None
-            assert clone_file is None
-            self.cnv_file = os.path.join(data_dir, "cnv_genelevel.tsv")
-            self.clone_file = os.path.join(data_dir, "clone_labels.tsv")
+        self.cnv_fn = cnv_fn
+        self.clone_fn = clone_fn
 
         
-    def extract(
-        self,
-        out_fn_list,
-        cna_type_list,
-        verbose = False
-    ):
+    def extract(self, out_fn_list, cna_type_list, verbose = False):
         """Extract CalicoST data and convert it to cell x gene probability 
         matrices.
         
@@ -65,18 +47,18 @@ class CalicoST(Tool):
         Void.
         """
         return extract_cna_prob(
-            cnv_file = self.cnv_file,
-            clone_file = self.clone_file,
+            cnv_fn = self.cnv_fn,
+            clone_fn = self.clone_fn,
             out_fn_list = out_fn_list,
             cna_type_list = cna_type_list,
-            verbose = verbose
+            verbose = verbose            
         )
-        
-        
-        
+
+
+
 def extract_cna_prob(
-    cnv_file,
-    clone_file,
+    cnv_fn,
+    clone_fn,
     out_fn_list,
     cna_type_list,
     verbose = False
@@ -84,8 +66,8 @@ def extract_cna_prob(
     if verbose:
         info("Checking arguments...")
 
-    assert_e(cnv_file)
-    assert_e(clone_file)
+    assert_e(cnv_fn)
+    assert_e(clone_fn)
     assert len(out_fn_list) > 0
     assert len(cna_type_list) == len(out_fn_list)
     for cna_type in cna_type_list:
@@ -96,8 +78,8 @@ def extract_cna_prob(
     if verbose:
         info("Loading CalicoST data ...")
 
-    cnv_df = pd.read_csv(cnv_file, sep = '\t')
-    clone_df = pd.read_csv(clone_file, sep = '\t')
+    cnv_df = pd.read_csv(cnv_fn, sep = '\t')
+    clone_df = pd.read_csv(clone_fn, sep = '\t')
 
     assert 'gene' in cnv_df.columns, \
         "cnv_genelevel.tsv must contain 'gene' column!"

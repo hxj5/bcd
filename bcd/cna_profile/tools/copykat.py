@@ -26,11 +26,7 @@ class CopyKAT(Tool):
         self.expr_mtx_fn = expr_mtx_fn
 
 
-    def extract(
-        self,
-        out_fn,
-        verbose = False
-    ):
+    def extract(self, out_fn, verbose = False):
         """
         Extract CNV data from CopyKAT output and save as AnnData object.
 
