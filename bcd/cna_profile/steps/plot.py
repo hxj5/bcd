@@ -63,7 +63,8 @@ def run_plot(
         
     Returns
     -------
-    Void.
+    dict
+        Results.
     """
     # check args.
     assert cna_type in ("gain", "loss", "loh")
@@ -123,7 +124,7 @@ def plot_metric(
     fig_dpi = 300,
     fig_dec = 3,
     fig_legend_xmin = 0.5,
-    fig_legend_ymin = 0.12,
+    fig_legend_ymin = 0.12
 ):
     """Plot ROC or PRC curve.
     
@@ -153,8 +154,7 @@ def plot_metric(
         
     Returns
     -------
-    dict
-        Results.
+    Void.
     """
     # check args.
     assert metric in ("roc", "prc")
@@ -208,7 +208,7 @@ def plot_metric(
     legend_fontsize = 8
     linewidth = 0.6
     
-    plt.figure(figsize = (fig_width, fig_height))
+    fig = plt.figure(figsize = (fig_width, fig_height))
     
     if metric == "roc":
         sns.lineplot(data = df, x = 'fpr', y = 'tpr', hue = 'legend', 
@@ -241,4 +241,4 @@ def plot_metric(
     plt.tight_layout()
     
     plt.savefig(out_fn, dpi = fig_dpi)
-
+    plt.close(fig)

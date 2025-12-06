@@ -37,7 +37,8 @@ class InferCNV(Tool):
         linkage_method = 'ward',
         linkage_metric = 'euclidean',
         fcluster_criterion = 'maxclust',
-        cna_score_how = 'mad'        
+        cna_score_how = 'mad',
+        verbose = False
     ):
         return predict_tumor_from_expression(
             obj_fn = self.obj_fn,
@@ -46,7 +47,8 @@ class InferCNV(Tool):
             linkage_method = linkage_method,
             linkage_metric = linkage_metric,
             fcluster_criterion = fcluster_criterion,
-            cna_score_how = cna_score_how
+            cna_score_how = cna_score_how,
+            verbose = verbose
         )
 
 
@@ -59,7 +61,8 @@ def predict_tumor_from_expression(
     linkage_method = 'ward',
     linkage_metric = 'euclidean',
     fcluster_criterion = 'maxclust',
-    cna_score_how = 'mad'
+    cna_score_how = 'mad',
+    verbose = False
 ):
     """Predict tumor cells from inferCNV output.
     

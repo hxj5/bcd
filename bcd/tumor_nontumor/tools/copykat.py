@@ -27,7 +27,7 @@ class CopyKAT(Tool):
         self.ploidy_pred_fn = ploidy_pred_fn
 
         
-    def predict(self, out_fn):
+    def predict(self, out_fn, verbose = False):
         """Process CopyKAT predictions of tumor vs. non-tumor.
         
         Read CopyKAT TSV file, rename columns to 'barcode' and 'prediction', 
@@ -40,7 +40,8 @@ class CopyKAT(Tool):
         return extract_tumor_prediction(
             ploidy_pred_fn = self.ploidy_pred_fn,
             out_fn = out_fn,
-            delimiter = '\t'
+            delimiter = '\t',
+            verbose = verbose
         )
         
         
@@ -48,14 +49,13 @@ class CopyKAT(Tool):
 def extract_tumor_prediction(
     ploidy_pred_fn,
     out_fn,
-    delimiter = '\t'
+    delimiter = '\t',
+    verbose = False
 ):
     # Check args and load data.
-    if not os.path.exists(ploidy_pred_fn):
-        raise ValueError(f"TSV file not found at {ploidy_pred_fn}")
-        
+    assert_e(ploidy_pred_fn)
+    
     df = pd.read_csv(ploidy_pred_fn, delimiter = delimiter)
-
     required_cols = ['cell.names', 'copykat.pred']
     if not all(col in df.columns for col in required_cols):
         raise ValueError(f"TSV must contain columns: {required_cols}")

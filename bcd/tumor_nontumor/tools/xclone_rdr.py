@@ -28,7 +28,7 @@ class XCloneRDR(Tool):
         self.adata_fn = adata_fn
         
 
-    def predict(self, out_fn, random_state = 123):
+    def predict(self, out_fn, random_state = 123, verbose = False):
         """Predict tumor cells from XClone output.
         
         UPDATE ...
@@ -51,7 +51,8 @@ class XCloneRDR(Tool):
             barcode_col = 'cell',
             p_cnv_col = 'p_cnv',
             delimiter = '\t',
-            random_state = random_state
+            random_state = random_state,
+            verbose = verbose
         )
 
 
@@ -64,7 +65,8 @@ def predict_tumor_from_expression(
     linkage_method = 'ward',
     linkage_metric = 'euclidean',
     fcluster_criterion = 'maxclust',
-    cna_score_how = 'mad'
+    cna_score_how = 'mad',
+    verbose = False
 ):
     """Predict tumor cells from XClone RDR output.
     
