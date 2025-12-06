@@ -1,7 +1,7 @@
 # steps
 
 
-from . import extract
+from . import predict
 from . import truth
 from . import overlap
 from . import metric

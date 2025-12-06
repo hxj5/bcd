@@ -1,298 +1,168 @@
-# Tumor non_tumor classification benchmark main
-# Author: Jiamu James Qiao
-# Date: 2025-10
+# main.py
+
 
 import os
-from .utils import (
-    extract_ground_truth,
-    xclone_predict_and_save,
-    infercnv_predict_and_save,
-    copykat_process_predictions,
-    predict_tumor_calicost,
-    numbat_process_predictions,
-    merge_predictions_to_tsv,
-    evaluate_predictions
-)
+import sys
+import time
+
+from logging import info, error
+from logging import warning as warn
+from .config import Config
+from .core import bcd_core_pipeline
+from .steps.predict import run_predict
+from .steps.truth import run_truth
+from .utils.base import assert_e
+from .utils.xlog import init_logging
+from ..app import APP, VERSION
 
 
-"""
-Example usage:
 
-tool_configs = [
-    ('xclone', 'path/to/your/file.h5ad', {'layer_name': 'layer_name'}), # default: 'WMA_smoothed_log_ratio_ab_dynamic'
-    ('infercnv', 'path/to/your/file.h5ad'),
-    ('copykat', 'path/to/copykat_predictions.txt', {'delimiter': '\t'}),
-    ('calicost', 'path/to/clone_labels.tsv', {'proportion_col': 'tumor_proportion', 'delimiter': '\t'})
-]
-tool_configs = [
-    ('xclone', '$ADATA_PATH', {'layer_name': '$LAYER_NAME'}),
-    ('infercnv', '$ADATA_PATH'),
-    ('copykat', '$COPYKAT_TSV', {'delimiter': '\t'}),
-    ('calicost', '$CALICOST_TSV', {'proportion_col': 'tumor_proportion', 'delimiter': '\t'}),
-    ('numbat', '$NUMBAT_TSV', {'barcode_col': 'cell', 'p_cnv_col': 'p_cnv', 'delimiter': '\t'})
-]
-metrics = run_tumor_prediction_pipeline(
-    tool_configs=tool_configs,
-    out_dir='output',
-    true_col='annotation',
-    true_label='normal'
-)
-"""
-
-def run_tumor_prediction_pipeline(
-    tool_configs,
-    ground_truth_tsv,
-    out_dir='output',
-    true_col='spot_anno',
-    true_label='normal',
-    barcode_col='barcode',
-    gt_delimiter='\t'
+def bcd_main(
+    sid,
+    tool_list,
+    out_dir,
+    truth_fn,
+    tumor_labels,
+    overlap_how = 'isec',
+    fig_dpi = 300,
+    verbose = True
 ):
-    """
-    Run the tumor prediction and evaluation pipeline for specified tools, merging and evaluating predictions.
-
-    Parameters:
-    -----------
-    tool_configs : list of tuples
-        List of (tool, input_path, **kwargs) where:
-        - tool: str, tool name ('xclone', 'infercnv', 'copykat', 'calicost', 'numbat').
-        - input_path: str, path to input file (.h5ad for xclone/infercnv, TSV for copykat/calicost/numbat).
-        - **kwargs: tool-specific parameters (e.g., layer_name for xclone, proportion_col for calicost).
-    ground_truth_tsv : str
-        Path to TSV file containing ground truth annotations.
-    out_dir : str
-        Directory to save output TSVs and plots.
-    true_col : str
-        Column in ground truth TSV with true labels (default: 'annotation').
-    true_label : str
-        Value in true_col for non-tumor cells (default: 'normal').
-    barcode_col : str
-        Column in ground truth TSV with cell barcodes (default: 'barcode').
-    gt_delimiter : str
-        Delimiter for ground truth TSV (default: '\t').
-
-    Returns:
-    --------
-    dict
-        Dictionary with metrics (accuracy, precision, recall, f1, ari) for each tool.
-    """
-    # Validate inputs
-    valid_tools = {'xclone', 'infercnv', 'copykat', 'calicost', 'numbat'}
-    tools = []
-    for config in tool_configs:
-        if len(config) < 2:
-            raise ValueError("Each tool_config must include tool name and input_path")
-        tool = config[0].lower()
-        if tool not in valid_tools:
-            raise ValueError(f"Invalid tool: {tool}. Expected: {valid_tools}")
-        input_path = config[1]
-        if not os.path.exists(input_path):
-            raise ValueError(f"Input file not found: {input_path}")
-        tools.append(tool)
-
-    # Validate ground truth TSV
-    if not os.path.exists(ground_truth_tsv):
-        raise ValueError(f"Ground truth TSV not found at {ground_truth_tsv}")
-
-    # Create output directory
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Step 1: Extract ground truth
-    extract_ground_truth(
-        tsv_path=ground_truth_tsv,
-        out_dir=out_dir,
-        barcode_col=barcode_col,
-        true_col=true_col,
-        delimiter=gt_delimiter
-    )
-
-    # Step 2: Generate predictions for each tool
-    for config in tool_configs:
-        tool, input_path, kwargs = config[0].lower(), config[1], config[2] if len(config) > 2 else {}
-        
-        if tool == 'xclone':
-            layer_name = kwargs.get('layer_name', 'layer_name')
-            xclone_predict_and_save(
-                adata_path=input_path,
-                layer_name=layer_name,
-                output_dir=out_dir
-            )
-        elif tool == 'infercnv':
-            infercnv_predict_and_save(
-                rds_path=input_path,
-                output_dir=out_dir
-            )
-        elif tool == 'copykat':
-            copykat_process_predictions(
-                tsv_path=input_path,
-                output_dir=out_dir,
-                delimiter=kwargs.get('delimiter', '\t')
-            )
-        elif tool == 'calicost':
-            predict_tumor_calicost(
-                tsv_path=input_path,
-                proportion_col=kwargs.get('proportion_col', 'tumor_proportion'),
-                output_dir=out_dir,
-                delimiter=kwargs.get('delimiter', '\t')
-            )
-        elif tool == 'numbat':
-            numbat_process_predictions(
-                tsv_path=input_path,
-                out_dir=out_dir,
-                barcode_col=kwargs.get('barcode_col', 'cell'),
-                p_cnv_col=kwargs.get('p_cnv_col', 'p_cnv'),
-                delimiter=kwargs.get('delimiter', '\t'),
-                n_clusters=kwargs.get('n_clusters', 2),
-                random_state=kwargs.get('random_state', 42)
-            )
-
-    # Step 3: Merge predictions
-    df = merge_predictions_to_tsv(
-        tools=tools,
-        out_dir=out_dir,
-        true_col="annotation",
-        true_label=true_label,
-        output_tsv_path=os.path.join(out_dir, 'combined_predictions.tsv')
-    )
-
-    # Step 4: Evaluate predictions
-    metrics = evaluate_predictions(
-        input_df=df,
-        output_dir=out_dir,
-        true_label_col='true_label',
-        pred_prefix='_pred'
-    )
-
-    print("Pipeline completed. Metrics:")
-    print(metrics)
-    return metrics
-
-def merge_predict(
-    tool_configs,
-    ground_truth_tsv,
-    out_dir='output',
-    true_col='spot_anno',
-    true_label='normal',
-    barcode_col='barcode',
-    gt_delimiter='\t'
-):
-    """
-    Run the tumor prediction and evaluation pipeline for specified tools, merging and evaluating predictions.
-
-    Parameters:
-    -----------
-    tool_configs : list of tuples
-        List of (tool, input_path, **kwargs) where:
-        - tool: str, tool name ('xclone', 'infercnv', 'copykat', 'calicost', 'numbat').
-        - input_path: str, path to input file (.h5ad for xclone/infercnv, TSV for copykat/calicost/numbat).
-        - **kwargs: tool-specific parameters (e.g., layer_name for xclone, proportion_col for calicost).
-    ground_truth_tsv : str
-        Path to TSV file containing ground truth annotations.
-    out_dir : str
-        Directory to save output TSVs and plots.
-    true_col : str
-        Column in ground truth TSV with true labels (default: 'annotation').
-    true_label : str
-        Value in true_col for non-tumor cells (default: 'normal').
-    barcode_col : str
-        Column in ground truth TSV with cell barcodes (default: 'barcode').
-    gt_delimiter : str
-        Delimiter for ground truth TSV (default: '\t').
-
-    Returns:
-    --------
-    dict
-        Dictionary with metrics (accuracy, precision, recall, f1, ari) for each tool.
-    """
-    # Validate inputs
-    valid_tools = {'xclone', 'infercnv', 'copykat', 'calicost', 'numbat'}
-    tools = []
-    for config in tool_configs:
-        if len(config) < 2:
-            raise ValueError("Each tool_config must include tool name and input_path")
-        tool = config[0].lower()
-        if tool not in valid_tools:
-            raise ValueError(f"Invalid tool: {tool}. Expected: {valid_tools}")
-        input_path = config[1]
-        if not os.path.exists(input_path):
-            raise ValueError(f"Input file not found: {input_path}")
-        tools.append(tool)
-
-    # Validate ground truth TSV
-    if not os.path.exists(ground_truth_tsv):
-        raise ValueError(f"Ground truth TSV not found at {ground_truth_tsv}")
-
-    # Create output directory
-    os.makedirs(out_dir, exist_ok=True)
-
-    '''
-    # Step 1: Extract ground truth
-    extract_ground_truth(
-        tsv_path=ground_truth_tsv,
-        out_dir=out_dir,
-        barcode_col=barcode_col,
-        true_col=true_col,
-        delimiter=gt_delimiter
-    )
-
-    # Step 2: Generate predictions for each tool
-    for config in tool_configs:
-        tool, input_path, kwargs = config[0].lower(), config[1], config[2] if len(config) > 2 else {}
-        
-        if tool == 'xclone':
-            layer_name = kwargs.get('layer_name', 'layer_name')
-            xclone_predict_and_save(
-                adata_path=input_path,
-                layer_name=layer_name,
-                output_dir=out_dir
-            )
-        elif tool == 'infercnv':
-            infercnv_predict_and_save(
-                rds_path=input_path,
-                output_dir=out_dir
-            )
-        elif tool == 'copykat':
-            copykat_process_predictions(
-                tsv_path=input_path,
-                output_dir=out_dir,
-                delimiter=kwargs.get('delimiter', '\t')
-            )
-        elif tool == 'calicost':
-            predict_tumor_calicost(
-                tsv_path=input_path,
-                proportion_col=kwargs.get('proportion_col', 'tumor_proportion'),
-                output_dir=out_dir,
-                delimiter=kwargs.get('delimiter', '\t')
-            )
-        elif tool == 'numbat':
-            numbat_process_predictions(
-                tsv_path=input_path,
-                out_dir=out_dir,
-                barcode_col=kwargs.get('barcode_col', 'cell'),
-                p_cnv_col=kwargs.get('p_cnv_col', 'p_cnv'),
-                delimiter=kwargs.get('delimiter', '\t'),
-                n_clusters=kwargs.get('n_clusters', 2),
-                random_state=kwargs.get('random_state', 42)
-            )
-    '''
+    """Main function.
     
-    # Step 3: Merge predictions
-    df = merge_predictions_to_tsv(
-        tools=tools,
-        out_dir=out_dir,
-        true_col="annotation",
-        true_label=true_label,
-        output_tsv_path=os.path.join(out_dir, 'combined_predictions.tsv')
-    )
+    Parameters
+    ----------
+    sid : str
+        Sample ID.
+    tool_list : list of Tool
+        A list of tool-specific :class:`~.tool.Tool` objects.
+    out_dir : str
+        The output folder.
+    truth_fn : str
+        A header-free file stroing the ground truth.
+        Its first two columns should be:
+        - `barcode` and `annotation`.
+    tumor_labels : str or list of str
+        The cell type labels for tumor cells.
+    overlap_how : {"isec"}
+        How to subset the tool matrices given the overlap cells.
+        - "isec"
+            Subset tool matrix by intersected cells only.
+    fig_dpi : int, default 300
+        Resolution of the plot.
+    verbose : bool, default True
+        Whether to show detailed logging information.
+        
+    Returns
+    -------
+    int
+        The return code. 0 if success, negative otherwise.
+    dict
+        Results.
+    """
+    conf = Config()
+    
+    conf.sid = sid
+    conf.tool_list = tool_list
+    conf.out_dir = out_dir
+    conf.truth_fn = truth_fnf
+    conf.tumor_labels = tumor_labels
+    conf.overlap_how = overlap_how
+    
+    conf.fig_dpi = fig_dpi
+    conf.verbose = verbose
+    
+    ret, res = bcd_run(conf)
+    return((ret, res))
 
-    # Step 4: Evaluate predictions
-    metrics = evaluate_predictions(
-        input_df=df,
-        output_dir=out_dir,
-        true_label_col='true_label',
-        pred_prefix='_pred'
-    )
+    
+    
+def bcd_run(conf):
+    init_logging(stream = sys.stdout)
 
-    print("Pipeline completed. Metrics:")
-    print(metrics)
-    return metrics
+    ret = -1
+    res = None
+
+    start_time = time.time()
+    time_str = time.strftime(
+        "%Y-%m-%d %H:%M:%S", time.localtime(start_time))
+    info("start time: %s." % time_str)
+    info("%s (VERSION %s)." % (APP, VERSION))
+
+    try:
+        res = bcd_core(conf)
+    except ValueError as e:
+        error(str(e))
+        error("Running program failed.")
+        error("Quiting ...")
+        ret = -1
+    else:
+        info("All Done!")
+        ret = 0
+    finally:
+        end_time = time.time()
+        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(end_time))
+        info("end time: %s" % time_str)
+        info("time spent: %.2fs" % (end_time - start_time, ))
+
+    return((ret, res))
+
+
+
+def bcd_core(conf):
+    bcd_init(conf)
+    info("Configuration:")
+    conf.show(fp = sys.stdout, prefix = "\t")
+    
+    
+    pp_dir = os.path.join(conf.out_dir, "0_pp")
+    os.makedirs(pp_dir, exist_ok = True)
+
+    
+    # predict tumor vs. non-tumor labels.
+    info("predict tumor vs. non-tumor labels ...")
+    
+    res_dir = os.path.join(pp_dir, "tools")
+    os.makedirs(res_dir, exist_ok = True)
+    predict_res = run_predict(
+        tool_list = conf.tool_list, 
+        out_dir = res_dir,
+        verbose = conf.verbose
+    )
+    
+    
+    # extract ground truth.
+    info("extract ground truth ...")
+
+    res_dir = os.path.join(pp_dir, "truth")
+    os.makedirs(res_dir, exist_ok = True)
+    truth_res = run_truth(
+        truth_fn = conf.truth_fn, 
+        out_dir = res_dir, 
+        tumor_labels = conf.tumor_labels,
+        verbose = conf.verbose
+    )
+    
+    
+    # run core pipeline.
+    info("run core pipeline ...")
+        
+    res = bcd_core_pipeline(
+        sid = conf.sid,
+        tool_list = conf.tool_list,
+        tool_fn_list = predict_res["out_fns"],
+        out_dir = conf.out_dir,
+        truth_fn = truth_res['out_fn'],
+        overlap_how = conf.overlap_how,
+        fig_dpi = conf.fig_dpi,
+        verbose = conf.verbose
+    )
+    return(res)
+
+
+
+def bcd_init(conf):
+    # check args.
+    assert len(conf.tool_list) > 0
+
+    os.makedirs(conf.out_dir, exist_ok = True)
+    assert_e(conf.truth_fn)

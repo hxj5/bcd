@@ -14,7 +14,8 @@ def run_overlap(
     tool_fn_list,
     truth_fn,
     out_dir, 
-    out_prefix, 
+    out_prefix,
+    overlap_how = 'isec',
     verbose = True
 ):
     """Subset the label files given overlapping cells.

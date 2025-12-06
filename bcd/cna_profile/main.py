@@ -246,8 +246,6 @@ def bcd_core(conf):
 def bcd_init(conf):
     # check args.
     assert len(conf.tool_list) > 0
-    for tool in conf.tool_list:
-        assert_e(tool.obj_path)
 
     os.makedirs(conf.out_dir, exist_ok = True)
     assert_e(conf.truth_fn)
