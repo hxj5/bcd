@@ -1,9 +1,8 @@
 bcd - Benchmarking of CNA Detection from Single-cell and Spatial Transcriptomics
 ================================================================================
 The ``bcd`` (Benchmarking of CNA Detection) pipeline evaluates the performance
-of tools in detecting copy number alterations (CNAs) from single-cell and 
-spatial transcriptomics, using metrics such as the ROC and PRC, 
-given the input ground truth of CNA profiles.
+of SOTA tools in CNA profile detection, tumor vs. non-tumor classification,
+and subclonal structure identification.
 
 
 
@@ -51,32 +50,6 @@ or add ``--user`` for your current one.
 Manual
 ------
 The full manual is at `docs/manual.rst <./docs/manual.rst>`_.
-
-
-Quick Usage
-~~~~~~~~~~~
-
-An example is:
-
-.. code-block:: python
-
-    from bcd.cna_profile import cna_profile_main, InferCNV, Numbat
-
-    infercnv = InferCNV(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
-    numbat = Numbat(joint_post_fn = "./numbat/joint_post_2.tsv")
-
-    ret, res = cna_profile_main(
-        sid = "test",
-        tool_list = [infercnv, numbat],
-        out_dir = "./out",
-        truth_fn = "./data/truth.tsv",
-        cell_anno_fn = "./data/cell_anno.tsv",
-        gene_anno_fn = "./data/gene_anno.hg38.tsv",
-        cna_type_list = None,         # None means ["gain", "loss", "loh"]
-        verbose = True
-    )
-    
-    print("return code = %d" % ret)
 
 
 

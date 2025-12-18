@@ -8,17 +8,22 @@ Manual
 
 
 The ``bcd`` (Benchmarking of CNA Detection) pipeline evaluates the performance
-of tools in detecting copy number alterations (CNAs) from single-cell and 
-spatial transcriptomics, using metrics such as the ROC and PRC, 
-given the input ground truth of CNA profiles.
+of SOTA tools in CNA profile detection, tumor vs. non-tumor classification,
+and subclonal structure identification.
 
 
+
+CNA profile detection
+---------------------
+
+
+.. _cna-profile-quick-usage:
 
 Quick Usage
------------
-First, please look at section `Input`_ to prepare the input data.
+^^^^^^^^^^^
+First, please look at section `Input <cna-profile-input_>`_ to prepare the input data.
 
-Then call the ``bcd_main()`` function to run the benchmarking pipeline.
+Then call the ``cna_profile_main()`` function to run the benchmarking pipeline.
 
 An example is:
 
@@ -43,119 +48,120 @@ An example is:
     print("return code = %d" % ret)
 
 
-The full parameters can be found at section `Full Parameters`_.
+The full parameters can be found at section `Full Parameters <cna-profile-full-parameters_>`_.
 
-See `Implementation`_ for details of the pipeline.
+See `Implementation <cna-profile-implementation_>`_ for details of the pipeline.
 
 
+
+.. _cna-profile-full-parameters:
 
 Full Parameters
----------------
+^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
-    bcd_main(
-        sid, args_list, out_dir, 
-        truth_fn, cell_anno_fn, gene_anno_fn, 
-        cna_type_list = None, 
-        numbat_mtx_how = "expand",
+    cna_profile_main(
+        sid,
+        tool_list,
+        out_dir,
+        truth_fn,
+        cell_anno_fn,
+        gene_anno_fn,
+        cna_type_list = None,
         overlap_how = "isec-cells",
         max_n_cutoff = 1000,
-        fig_width = 4.25, fig_height = 3.25, 
-        fig_dpi = 300, fig_dec = 3, 
-        fig_legend_xmin = 0.5, fig_legend_ymin = 0.12, 
+        fig_width = 4.25,
+        fig_height = 3.25,
+        fig_dpi = 300,
+        fig_dec = 3,
+        fig_legend_xmin = 0.5,
+        fig_legend_ymin = 0.12,
         verbose = True
     )
 
     
 The details are listed below:
 
-
 sid : str
     Sample ID.
-    
-args_list : list of ToolArgs
-    A list of tool-specific :class:`~.args.ToolArgs` objects.
-    
+
+tool_list : list of Tool
+    A list of tool-specific :class:`~.tool.Tool` objects.
+
 out_dir : str
     The output folder.
-        
+
 truth_fn : str
     A header-free file stroing the ground truth.
     Its first five columns should be:
-    
+
     - "chrom";
     - "start": 1-based and inclusive;
     - "end": 1-based and inclusive;
     - "clone": clone ID;
     - "cna_type": CNA type, should be in {"gain", "loss", "loh"}.
-        
+
 cell_anno_fn : str
     File storing cell annotations.
     It is a header-free file whose first two columns are:
-    
+
     - "cell": cell barcode;
     - "clone": clone ID;
-        
+
 gene_anno_fn : str
     File storing gene annotations.
     It is a header-free file whose first four columns are:
-    
+
     - "chrom";
     - "start": 1-based and inclusive;
     - "end": 1-based and inclusive;
     - "gene": gene name.
-        
+
 cna_type_list : list of str or None, default None
     A list of CNA types.
     None means using all available CNA types, including "gain",
     "loss", and "loh".
-    
-numbat_mtx_how : {"expand", "raw"}
-    How to process the extracted Numbat matrix before overlap step.
-    
-    - "expand": 
-        expand the Numbat matrix to transcriptomics scale and fill value 0;
-    - "raw":
-        use the raw Numbat matrix.
 
 overlap_how : {"isec-cells", isec-both"}
     How to subset the tool matrices given the overlap cells and genes.
-    
+
     - "isec-cells"
         Subset tool matrix by intersected cells only.
     - "isec-both"
         Subset tool matrix by intersected cells and genes.
-        
+
 max_n_cutoff : int or None, default 1000
     Maximum number of cutoff values for calculating metrics.
     If None, use all unique values in tool matrix.
-        
+
 fig_width : float, default 4.25
     Width of the plot in inch.
-        
+
 fig_height : float, default 3.25
     Height of the plot in inch.
-        
+
 fig_dpi : int, default 300
     Resolution of the plot.
-        
+
 fig_dec : {3, 4}
     Number of decimal places for AUC.
-        
+
 fig_legend_xmin : float, default 0.5
     The xmin position of legend.
-        
+
 fig_legend_ymin : float, default 0.12
     The ymin position of legend.
-        
+
 verbose : bool, default True
     Whether to show detailed logging information.
 
 
 
+.. _cna-profile-input:
+
 Input
------
+^^^^^
 The inputs to the pipeline include:
 
 * Tool-specific object files.
@@ -262,15 +268,19 @@ An example is as follows:
 
 
 
+.. _cna-profile-output:
+
 Output
-------
+^^^^^^
 The final output is available at folder ``{cna_type}/3_plot``.
 It contains the ROC and PRC plots for this CNA type.
 
 
 
+.. _cna-profile-implementation:
+
 Implementation
---------------
+^^^^^^^^^^^^^^
 The pipeline evaluates the performance of tools in detecting copy number 
 alterations (CNAs) from single-cell and spatial transcriptomics, 
 using the ROC and PRC metrics, given the input ground truth of CNA profiles.
@@ -291,3 +301,120 @@ The CNA-type-specific processing:
 #. ``metric``: calculate ROC and PRC using CNA expression or probability values
    as scores and binary truth values as labels.
 #. ``plot``: plot ROC and PRC.
+
+
+
+Tumor vs. non-tumor classification
+----------------------------------
+
+
+.. _tumor-nontumor-quick-usage:
+
+Quick Usage
+^^^^^^^^^^^
+First, please look at section `Input <tumor-nontumor-input_>`_ to prepare the input data.
+
+Then call the ``tumor_nontumor_main()`` function to run the benchmarking pipeline.
+
+An example is:
+
+.. code-block:: python
+
+    from bcd.tumor_nontumor import tumor_nontumor_main, InferCNV, Numbat
+
+    infercnv = InferCNV(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
+    numbat = Numbat(cnv_prob_fn = "./numbat/clone_post_2.tsv")
+
+    ret, res = tumor_nontumor_main(
+        sid = "test",
+        tool_list = [infercnv, numbat],
+        out_dir = "./out",
+        truth_fn = "./data/truth.tsv",
+        tumor_labels = "cancer",
+        verbose = True
+    )
+    
+    print("return code = %d" % ret)
+
+
+The full parameters can be found at section `Full Parameters <tumor-nontumor-full-parameters_>`_.
+
+See `Implementation <tumor-nontumor-implementation_>`_ for details of the pipeline.
+
+
+
+.. _tumor-nontumor-full-parameters:
+
+Full Parameters
+^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+    tumor_nontumor_main(
+        sid,
+        tool_list,
+        out_dir,
+        truth_fn,
+        tumor_labels,
+        overlap_how = 'isec',
+        fig_dpi = 300,
+        verbose = True
+    )
+    
+The details are listed below:
+
+sid : str
+    Sample ID.
+
+tool_list : list of Tool
+    A list of tool-specific :class:`~.tool.Tool` objects.
+
+out_dir : str
+    The output folder.
+
+truth_fn : str
+    A header-free file stroing the ground truth.
+    Its first two columns should be:
+    
+    - `barcode` and `annotation`.
+
+tumor_labels : str or list of str
+    The cell type labels for tumor cells in `truth_fn`.
+
+overlap_how : {"isec"}
+    How to subset the tool matrices given the overlap cells.
+    
+    - "isec"
+        Subset tool matrix by intersected cells only.
+
+fig_dpi : int, default 300
+    Resolution of the plot.
+
+verbose : bool, default True
+    Whether to show detailed logging information.
+    
+
+
+.. _tumor-nontumor-input:
+
+Input
+^^^^^
+The inputs to the pipeline include:
+
+TO BE ADDED ...
+
+
+
+.. _tumor-nontumor-output:
+
+Output
+^^^^^^
+TO BE ADDED ...
+
+
+
+.. _tumor-nontumor-implementation:
+
+Implementation
+^^^^^^^^^^^^^^
+TO BE ADDED ...
