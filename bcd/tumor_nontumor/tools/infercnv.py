@@ -11,7 +11,7 @@ from logging import warning as warn
 from scipy.cluster.hierarchy import linkage, fcluster
 from sklearn.cluster import KMeans
 from .base import Tool
-from ..utils.base import assert_e
+from ..utils.base import assert_e, exe_cmdline
 from ..utils.io import save_h5ad
 
 
@@ -40,9 +40,12 @@ class InferCNV(Tool):
         cna_score_how = 'mad',
         verbose = False
     ):
-        return predict_tumor_from_expression(
+        os.makedirs(out_dir, exist_ok = True)
+        out_fn = os.path.join(out_dir, "%s_predictions.tsv" % self.tid.lower())
+        res = predict_tumor_from_expression(
             obj_fn = self.obj_fn,
-            out_dir = out_dir,
+            out_fn = out_fn,
+            tmp_dir = os.path.join(out_dir, "r2py"),
             ref_expr = ref_expr,
             linkage_method = linkage_method,
             linkage_metric = linkage_metric,
@@ -50,6 +53,7 @@ class InferCNV(Tool):
             cna_score_how = cna_score_how,
             verbose = verbose
         )
+        return out_fn
 
 
 

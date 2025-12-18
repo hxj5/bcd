@@ -4,6 +4,7 @@
 import gc
 import numpy as np
 import os
+import pandas as pd
 from logging import info
 from ..utils.base import assert_e
 
@@ -108,8 +109,8 @@ def overlap_isec_cells(
     if verbose:
         info("further overlap with truth cells ...")
 
-    truth = pd.read_csv(fn, delimiter = '\t')
-    ovp_cells = np.intersect1d(truth.obs["barcode"], ovp_cells)
+    truth = pd.read_csv(truth_fn, delimiter = '\t')
+    ovp_cells = np.intersect1d(truth["barcode"], ovp_cells)
     fn = os.path.join(out_dir, 
             "%s.tools_and_truth.intersect.cells.tsv" % out_prefix)
     np.savetxt(fn, ovp_cells, fmt = "%s", delimiter = '\n')
@@ -124,8 +125,8 @@ def overlap_isec_cells(
 
     out_tool_fn_list = []
     for tool, tool_fn in zip(tool_list, tool_fn_list):
-        tid = tool.tid
-        df = pd.read_csv(fn, delimiter = '\t')
+        tid = tool.tid.lower()
+        df = pd.read_csv(tool_fn, delimiter = '\t')
         df.index = df['barcode']
         df = df.loc[ovp_cells].copy()
         
@@ -138,7 +139,7 @@ def overlap_isec_cells(
     truth = truth.loc[ovp_cells].copy()
         
     out_truth_fn = os.path.join(out_dir, "%s.truth.tsv" % (out_prefix, ))
-    truth.to_csv(fn, sep = '\t', index = False)    
+    truth.to_csv(out_truth_fn, sep = '\t', index = False)    
 
 
     res = dict(

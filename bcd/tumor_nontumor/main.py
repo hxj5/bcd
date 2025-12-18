@@ -42,7 +42,7 @@ def bcd_main(
         Its first two columns should be:
         - `barcode` and `annotation`.
     tumor_labels : str or list of str
-        The cell type labels for tumor cells.
+        The cell type labels for tumor cells in `truth_fn`.
     overlap_how : {"isec"}
         How to subset the tool matrices given the overlap cells.
         - "isec"
@@ -64,7 +64,7 @@ def bcd_main(
     conf.sid = sid
     conf.tool_list = tool_list
     conf.out_dir = out_dir
-    conf.truth_fn = truth_fnf
+    conf.truth_fn = truth_fn
     conf.tumor_labels = tumor_labels
     conf.overlap_how = overlap_how
     
@@ -121,7 +121,8 @@ def bcd_core(conf):
     # predict tumor vs. non-tumor labels.
     info("predict tumor vs. non-tumor labels ...")
     
-    res_dir = os.path.join(pp_dir, "tools")
+    #res_dir = os.path.join(pp_dir, "tools")
+    res_dir = pp_dir
     os.makedirs(res_dir, exist_ok = True)
     predict_res = run_predict(
         tool_list = conf.tool_list, 
@@ -137,7 +138,7 @@ def bcd_core(conf):
     os.makedirs(res_dir, exist_ok = True)
     truth_res = run_truth(
         truth_fn = conf.truth_fn, 
-        out_dir = res_dir, 
+        out_fn = os.path.join(res_dir, "truth.tsv"), 
         tumor_labels = conf.tumor_labels,
         verbose = conf.verbose
     )

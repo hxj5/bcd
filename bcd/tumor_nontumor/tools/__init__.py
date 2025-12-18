@@ -6,4 +6,4 @@ from .calicost import CalicoST
 from .copykat import CopyKAT
 from .infercnv import InferCNV
 from .numbat import Numbat
-from .xclone_rdr import XClone_RDR
+from .xclone_rdr import XCloneRDR

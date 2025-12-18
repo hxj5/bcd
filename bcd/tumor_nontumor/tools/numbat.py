@@ -11,7 +11,6 @@ from logging import warning as warn
 from sklearn.cluster import KMeans
 from .base import Tool
 from ..utils.base import assert_e
-from ..utils.io import save_h5ad
 
 
 
@@ -89,7 +88,7 @@ def predict_tumor_from_cnv_prob(
 
     
     # Apply K-means clustering
-    p_cnv_values = df[p_cnv_col].values.reshape(-1, 1)
+    p_cnv_values = df[p_cnv_col].to_numpy().reshape(-1, 1)
     kmeans = KMeans(n_clusters = n_clusters, random_state = random_state)
     cluster_labels = kmeans.fit_predict(p_cnv_values)
 
@@ -106,9 +105,9 @@ def predict_tumor_from_cnv_prob(
 
     # Save to TSV
     result_df = pd.DataFrame({
-        'barcode': df[barcode_col],
+        'barcode': df[barcode_col].to_numpy(),
         'prediction': predictions,
-        'p_cnv': p_cnv_values
+        'p_cnv': df[p_cnv_col].to_numpy()
     })
     result_df.to_csv(out_fn, sep = '\t', index = False)
     info(f"Predictions saved to {out_fn}.")

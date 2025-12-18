@@ -11,7 +11,6 @@ from logging import warning as warn
 from sklearn.cluster import KMeans
 from .base import Tool
 from ..utils.base import assert_e
-from ..utils.io import save_h5ad
 
 
 

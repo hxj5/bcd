@@ -61,6 +61,10 @@ def expand_grid(d):
         return(res)
 
 
+def np_unique_keep_order(x):
+    b, idx = np.unique(x, return_index = True)
+    return b[np.argsort(idx)]
+
 
 def is_function(x):
     """Test whether `x` is a function."""

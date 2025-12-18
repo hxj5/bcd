@@ -22,7 +22,7 @@ def run_predict(
 
         res_dir = os.path.join(out_dir, tid)
         os.makedirs(res_dir, exist_ok = True)
-        out_fn = os.path.join(out_dir, "%s_predictions.tsv" % tid)
+        out_fn = os.path.join(res_dir, "%s_predictions.tsv" % tid)
         
         if tid == "calicost":
             tool.predict(
@@ -37,8 +37,8 @@ def run_predict(
             )
         
         elif tid == "infercnv":
-            tool.predict(
-                out_dir,
+            out_fn = tool.predict(
+                res_dir,
                 ref_expr = 1,
                 linkage_method = 'ward',
                 linkage_metric = 'euclidean',

@@ -13,7 +13,6 @@ from sklearn.metrics import (
     f1_score, adjusted_rand_score
 )
 from ..utils.base import assert_e
-from ..utils.io import load_h5ad
 
 
 
@@ -48,7 +47,6 @@ def run_metric(
     assert len(tool_list) == len(tool_fn_list)
     for fn in tool_fn_list:
         assert_e(fn)
-    os.makedirs(out_dir, exist_ok = True)
     assert_e(truth_fn)
 
     
@@ -63,14 +61,14 @@ def run_metric(
     ari_list = []
     
     df = pd.read_csv(truth_fn, sep = '\t')
-    truth_lables = df['annotation'].to_numpy()
+    truth_labels = df['annotation'].to_numpy()
     for i, (tool, tool_fn) in enumerate(zip(tool_list, tool_fn_list)):
         tid = tool.tid
         if verbose:
             info("process %s ..." % tid)
         
         df = pd.read_csv(tool_fn, sep = '\t')
-        tool_lables = df['prediction'].to_numpy()
+        tool_labels = df['prediction'].to_numpy()
         res = calc_binary_metrics(
             truth = truth_labels,
             pred = tool_labels,
@@ -129,9 +127,9 @@ def calc_binary_metrics(truth, pred, pos_label):
     pos_label
         Positive label.
     """
-    y_pred = np.array(pred) == pos_label
-    y_true = np.array(truth) == pos_label
-    
+    y_pred = (np.array(pred) == pos_label) + 0
+    y_true = (np.array(truth) == pos_label) + 0
+
     res = dict(
         accuracy = accuracy_score(y_true, y_pred),
         precision = precision_score(
@@ -141,6 +139,7 @@ def calc_binary_metrics(truth, pred, pos_label):
             y_true, y_pred, zero_division = 0
         ),
         F1 = f1_score(y_true, y_pred, zero_division = 0),
-        ARI = adjusted_rand_score(truth, pred)
+        ARI = adjusted_rand_score(y_true, y_pred)
     )
     return(res)
+

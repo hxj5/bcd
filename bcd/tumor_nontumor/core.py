@@ -84,9 +84,9 @@ def bcd_core_pipeline(
     os.makedirs(res_dir, exist_ok = True)
     metric_res = run_metric(
         tool_list = tool_list,
-        out_dir = res_dir,
         tool_fn_list = overlap_res["out_tool_fn_list"],
-        truth_fn_list = overlap_res["out_truth_fn"],
+        truth_fn = overlap_res["out_truth_fn"],
+        out_fn = os.path.join(res_dir, "metrics.tsv"),
         verbose = verbose
     )
     step += 1
