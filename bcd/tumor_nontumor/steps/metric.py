@@ -118,6 +118,8 @@ def run_metric(
 
 
 
+# Note that when true labels contain only one class, ARI would be zero
+# when test labels has two classes.
 def calc_binary_metrics(truth, pred, pos_label):
     """
     truth : array

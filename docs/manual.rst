@@ -323,7 +323,7 @@ An example is:
     from bcd.tumor_nontumor import tumor_nontumor_main, InferCNV, Numbat
 
     infercnv = InferCNV(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
-    numbat = Numbat(cnv_prob_fn = "./numbat/clone_post_2.tsv")
+    numbat = Numbat(clone_post_fn = "./numbat/clone_post_2.tsv")
 
     ret, res = tumor_nontumor_main(
         sid = "test",

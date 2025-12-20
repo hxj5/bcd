@@ -40,17 +40,15 @@ def run_predict(
             out_fn = tool.predict(
                 res_dir,
                 ref_expr = 1,
-                linkage_method = 'ward',
-                linkage_metric = 'euclidean',
-                fcluster_criterion = 'maxclust',
+                dist = 'euclidean',
+                hclust = 'ward.D2',
                 cna_score_how = 'mad',
                 verbose = verbose
             )
 
         elif tid == "numbat":
             tool.predict(
-                out_fn, 
-                random_state = 123, 
+                out_fn,
                 verbose = verbose     
             )
                 
