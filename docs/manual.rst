@@ -71,12 +71,6 @@ Full Parameters
         cna_type_list = None,
         overlap_how = "isec-cells",
         max_n_cutoff = 1000,
-        fig_width = 4.25,
-        fig_height = 3.25,
-        fig_dpi = 300,
-        fig_dec = 3,
-        fig_legend_xmin = 0.5,
-        fig_legend_ymin = 0.12,
         verbose = True
     )
 
@@ -134,24 +128,6 @@ overlap_how : {"isec-cells", isec-both"}
 max_n_cutoff : int or None, default 1000
     Maximum number of cutoff values for calculating metrics.
     If None, use all unique values in tool matrix.
-
-fig_width : float, default 4.25
-    Width of the plot in inch.
-
-fig_height : float, default 3.25
-    Height of the plot in inch.
-
-fig_dpi : int, default 300
-    Resolution of the plot.
-
-fig_dec : {3, 4}
-    Number of decimal places for AUC.
-
-fig_legend_xmin : float, default 0.5
-    The xmin position of legend.
-
-fig_legend_ymin : float, default 0.12
-    The ymin position of legend.
 
 verbose : bool, default True
     Whether to show detailed logging information.
