@@ -3,7 +3,15 @@
    =======
    
    
-   
+Release v0.4.0 (26/12/2025)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Feature enhancement:
+
+* make v0.3.0 a module named cna_profile;
+* add another two modules: tumor_nontumor and subclonal_structure.
+
+
+ 
 Release v0.3.0 (22/05/2025)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Feature enhancement:
