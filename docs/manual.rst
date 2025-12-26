@@ -21,7 +21,7 @@ CNA profile detection
 
 Quick Usage
 ^^^^^^^^^^^
-First, please look at section `Input <cna-profile-input_>`_ to prepare the input data.
+First, please look at section :ref:`Input <cna-profile-input>` to prepare the input data.
 
 Then call the ``cna_profile_main()`` function to run the benchmarking pipeline.
 
@@ -48,9 +48,9 @@ An example is:
     print("return code = %d" % ret)
 
 
-The full parameters can be found at section `Full Parameters <cna-profile-full-parameters_>`_.
+The full parameters can be found at section :ref:`Full Parameters <cna-profile-full-parameters>`.
 
-See `Implementation <cna-profile-implementation_>`_ for details of the pipeline.
+See :ref:`Implementation <cna-profile-implementation>` for details of the pipeline.
 
 
 
@@ -312,7 +312,7 @@ Tumor vs. non-tumor classification
 
 Quick Usage
 ^^^^^^^^^^^
-First, please look at section `Input <tumor-nontumor-input_>`_ to prepare the input data.
+First, please look at section :ref:`Input <tumor-nontumor-input>` to prepare the input data.
 
 Then call the ``tumor_nontumor_main()`` function to run the benchmarking pipeline.
 
@@ -337,9 +337,9 @@ An example is:
     print("return code = %d" % ret)
 
 
-The full parameters can be found at section `Full Parameters <tumor-nontumor-full-parameters_>`_.
+The full parameters can be found at section :ref:`Full Parameters <tumor-nontumor-full-parameters>`.
 
-See `Implementation <tumor-nontumor-implementation_>`_ for details of the pipeline.
+See :ref:`Implementation <tumor-nontumor-implementation>` for details of the pipeline.
 
 
 
@@ -414,6 +414,123 @@ TO BE ADDED ...
 
 
 .. _tumor-nontumor-implementation:
+
+Implementation
+^^^^^^^^^^^^^^
+TO BE ADDED ...
+
+
+
+Subclonal structure identification
+----------------------------------
+
+
+.. _subclonal-structure-quick-usage:
+
+Quick Usage
+^^^^^^^^^^^
+First, please look at section :ref:`Input <subclonal-structure-input>` to prepare the input data.
+
+Then call the ``subclonal_structure_main()`` function to run the benchmarking pipeline.
+
+An example is:
+
+.. code-block:: python
+
+    from bcd.subclonal_structure import subclonal_structure_main, InferCNV, Numbat
+
+    infercnv = InferCNV(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
+    numbat = Numbat(clone_post_fn = "./numbat/clone_post_2.tsv")
+
+    ret, res = subclonal_structure_main(
+        sid = "test",
+        tool_list = [infercnv, numbat],
+        out_dir = "./out",
+        truth_fn = "./data/truth.tsv",
+        n_cluster = 2,
+        verbose = True
+    )
+    
+    print("return code = %d" % ret)
+
+
+The full parameters can be found at section :ref:`Full Parameters <subclonal-structure-full-parameters>`.
+
+See :ref:`Implementation <subclonal-structure-implementation>` for details of the pipeline.
+
+
+
+.. _subclonal-structure-full-parameters:
+
+Full Parameters
+^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+    subclonal_structure_main(
+        sid,
+        tool_list,
+        out_dir,
+        truth_fn,
+        n_cluster,
+        overlap_how = 'isec',
+        fig_dpi = 300,
+        verbose = True
+    )
+    
+The details are listed below:
+
+sid : str
+    Sample ID.
+
+tool_list : list of Tool
+    A list of tool-specific :class:`~.tool.Tool` objects.
+
+out_dir : str
+    The output folder.
+
+truth_fn : str
+    A header-free file stroing the ground truth.
+    Its first two columns should be:
+    
+    - `barcode` and `annotation`.
+
+n_cluster : int
+    Number of clusters for tools that do not output clone labels.
+
+overlap_how : {"isec"}
+    How to subset the tool matrices given the overlap cells.
+    
+    - "isec"
+        Subset tool matrix by intersected cells only.
+
+fig_dpi : int, default 300
+    Resolution of the plot.
+
+verbose : bool, default True
+    Whether to show detailed logging information.
+    
+
+
+.. _subclonal-structure-input:
+
+Input
+^^^^^
+The inputs to the pipeline include:
+
+TO BE ADDED ...
+
+
+
+.. _subclonal-structure-output:
+
+Output
+^^^^^^
+TO BE ADDED ...
+
+
+
+.. _subclonal-structure-implementation:
 
 Implementation
 ^^^^^^^^^^^^^^
