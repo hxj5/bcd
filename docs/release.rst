@@ -2,7 +2,13 @@
    History
    =======
    
-   
+
+Release v0.5.0 (29/12/2025)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+For each module, merge all files into one single file.
+
+
+ 
 Release v0.4.0 (26/12/2025)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Feature enhancement:
