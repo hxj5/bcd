@@ -1,5 +1,12 @@
 # cna_profile.py - CNA profile detection.
 
+# Inputs
+# * CalicoST - clonal gene copy number, spot-wise clone label and tumor prop.
+# * CopyKAT - cell x gene CNA expression matrix;
+# * InferCNV - cell x gene CNA expression matrix;
+# * Numbat - cell x segment CNA probability;
+# * XClone - cell x gene CNA probability;
+
 
 import anndata as ad
 import functools
