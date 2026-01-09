@@ -29,10 +29,13 @@ An example is:
 
 .. code-block:: python
 
-    from bcd.cna_profile import cna_profile_main, InferCNV, Numbat
+    from bcd.cna_profile import cna_profile_main, InferCNV, Numbat, XClone, CopyKAT, CalicoST
 
     infercnv = InferCNV(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
     numbat = Numbat(joint_post_fn = "./numbat/joint_post_2.tsv")
+    copykat = CopyKAT(expr_mtx_fn="copykat/{sample_name}_CNA_raw_results_gene_by_cell.txt")
+    xclone = XClone(combine_fn="./xclone/data/combined_final.h5ad")
+    calicost = CalicoST(cnv_fn="./calicost/cnv_genelevel.tsv", clone_fn="./calicost/clone_labels.tsv")
 
     ret, res = cna_profile_main(
         sid = "test",
