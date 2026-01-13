@@ -197,6 +197,487 @@ def cna_calling_main(
 #------------------ CalicoST ------------------#
 ################################################
 
+def run_calicost(
+    sample_id,
+    bam_fn,
+    out_dir,
+    ncores,
+    genome,
+    eagle_fn,
+    snp_vcf_fn,
+    panel_dir,
+    calicost_dir,
+    snp_dir = None,
+    spaceranger_dir = None,
+    bamlist = None,
+    skip_preprocessing = False,
+    skip_purity = False,
+    tumorprop_file = None,
+    geneticmap_file = None,
+    hgtable_file = None,
+    filtergenelist_file = None,
+    filterregion_file = None,
+    samtools_sorting_mem = "4G",
+    umi_tag = "Auto",
+    cell_tag = "CB",
+    nthreads_cellsnplite = None,
+    n_clones = 5,
+    n_clones_rdr = 2,
+    min_spots_per_clone = 100,
+    min_avgumi_per_clone = 10,
+    maxspots_pooling = 19,
+    tumorprop_threshold = 0.7,
+    spatial_weight = 1.0,
+    secondary_min_umi = 400,
+    script_dir = None
+):
+    """
+    Run CalicoST for CNA calling with all three steps:
+    1. Preprocessing (genotyping and phasing)
+    2. Estimate tumor proportion per spot
+    3. Run CalicoST main (CNA calling)
+
+    Supports both single sample and multiple samples.
+
+    Parameters
+    ----------
+    sample_id : str or list
+        Sample ID(s). For single sample, provide a string. For multiple samples,
+        provide a list of strings corresponding to each BAM file.
+    bam_fn : str or list
+        Path(s) to BAM file(s). For single sample, provide a string. For multiple
+        samples, provide a list of strings. Alternatively, can provide a list of
+        tuples: [(bam_path, sample_id, spaceranger_dir), ...]
+    out_dir : str
+        Output directory.
+    ncores : int
+        Number of cores.
+    genome : str
+        Genome version (e.g., "hg38", "hg19").
+    eagle_fn : str
+        Path to Eagle executable.
+    snp_vcf_fn : str
+        Path to SNP VCF file.
+    panel_dir : str
+        Path to phasing panel directory.
+    calicost_dir : str
+        Path to CalicoST installation directory.
+    snp_dir : str, optional
+        Directory containing preprocessed SNP data. If None, will be set to
+        out_dir/snp.
+    spaceranger_dir : str, optional
+        Path to spaceranger output directory (for single sample). If None, will
+        be inferred from bam_fn parent directory.
+    bamlist : list of tuples, optional
+        For multiple samples, list of (bam_path, sample_id, spaceranger_dir).
+        If provided, overrides bam_fn and sample_id.
+    skip_preprocessing : bool, default False
+        Skip preprocessing step if SNP data already exists.
+    skip_purity : bool, default False
+        Skip tumor proportion estimation step.
+    tumorprop_file : str, optional
+        Path to tumor proportion file. If None and skip_purity is False, will
+        be set to out_dir/purity/loh_estimator_tumor_prop.tsv after purity step.
+    geneticmap_file : str, optional
+        Path to genetic map file. If None, will try to use default from
+        calicost_dir/GRCh38_resources/.
+    hgtable_file : str, optional
+        Path to hgTables file. If None, will try to use default from
+        calicost_dir/GRCh38_resources/.
+    filtergenelist_file : str, optional
+        Path to filter gene list file. If None, will try to use default from
+        calicost_dir/GRCh38_resources/.
+    filterregion_file : str, optional
+        Path to filter region file. If None, will try to use default from
+        calicost_dir/GRCh38_resources/.
+    samtools_sorting_mem : str, default "4G"
+        Memory for samtools sort (only used for multiple samples).
+    umi_tag : str, default "Auto"
+        UMI tag for cellsnp-lite.
+    cell_tag : str, default "CB"
+        Cell barcode tag for cellsnp-lite.
+    nthreads_cellsnplite : int, optional
+        Number of threads for cellsnp-lite. If None, uses ncores.
+    n_clones : int, default 5
+        Number of clones for HMRF.
+    n_clones_rdr : int, default 2
+        Number of clones for RDR.
+    min_spots_per_clone : int, default 100
+        Minimum spots per clone.
+    min_avgumi_per_clone : int, default 10
+        Minimum average UMI per clone.
+    maxspots_pooling : int, default 19
+        Maximum spots for pooling.
+    tumorprop_threshold : float, default 0.7
+        Tumor proportion threshold.
+    spatial_weight : float, default 1.0
+        Spatial weight for HMRF.
+    secondary_min_umi : int, default 400
+        Secondary minimum UMI.
+    script_dir : str, optional
+        Directory for scripts. If None, will be set to out_dir/scripts.
+
+    Returns
+    -------
+    int
+        Return code from the command execution.
+    """
+    os.makedirs(out_dir, exist_ok = True)
+
+    if script_dir is None:
+        script_dir = os.path.join(out_dir, "scripts")
+    os.makedirs(script_dir, exist_ok = True)
+
+    config_dir = os.path.join(out_dir, "config")
+    os.makedirs(config_dir, exist_ok = True)
+
+    # Set default paths
+    if snp_dir is None:
+        snp_dir = os.path.join(out_dir, "snp")
+    os.makedirs(snp_dir, exist_ok = True)
+
+    purity_dir = os.path.join(out_dir, "purity")
+    os.makedirs(purity_dir, exist_ok = True)
+
+    if nthreads_cellsnplite is None:
+        nthreads_cellsnplite = ncores
+
+    # Determine if single or multiple samples
+    if bamlist is not None:
+        # Multiple samples provided as list of tuples
+        is_multi = True
+        bamlist_entries = bamlist
+    elif isinstance(bam_fn, list):
+        # Multiple samples provided as lists
+        is_multi = True
+        if isinstance(sample_id, list):
+            if spaceranger_dir is None or isinstance(spaceranger_dir, str):
+                # All samples use same spaceranger_dir or need to infer
+                if spaceranger_dir is None:
+                    spaceranger_dir = [os.path.dirname(b) for b in bam_fn]
+                else:
+                    spaceranger_dir = [spaceranger_dir] * len(bam_fn)
+            bamlist_entries = list(zip(bam_fn, sample_id, spaceranger_dir))
+        else:
+            raise ValueError("If bam_fn is a list, sample_id must also be a list")
+    else:
+        # Single sample
+        is_multi = False
+        if spaceranger_dir is None:
+            # Try to infer from BAM file path
+            bam_dir = os.path.dirname(bam_fn)
+            if os.path.basename(bam_dir) == "outs":
+                spaceranger_dir = bam_dir
+            else:
+                spaceranger_dir = bam_dir
+        bamlist_entries = [(bam_fn, sample_id, spaceranger_dir)]
+
+    # Set default resource files if not provided
+    if geneticmap_file is None:
+        if genome in ["hg38", "GRCh38"]:
+            geneticmap_file = os.path.join(
+                calicost_dir, "GRCh38_resources", "genetic_map_GRCh38_merged.tab.gz"
+            )
+        else:
+            geneticmap_file = os.path.join(
+                calicost_dir, "GRCh37_resources", "genetic_map_GRCh37_merged.tab.gz"
+            )
+
+    if hgtable_file is None:
+        if genome in ["hg38", "GRCh38"]:
+            hgtable_file = os.path.join(
+                calicost_dir, "GRCh38_resources", "hgTables_hg38_gencode.txt"
+            )
+        else:
+            hgtable_file = os.path.join(
+                calicost_dir, "GRCh37_resources", "hgTables_hg19_gencode.txt"
+            )
+
+    if filtergenelist_file is None:
+        if genome in ["hg38", "GRCh38"]:
+            filtergenelist_file = os.path.join(
+                calicost_dir, "GRCh38_resources", "ig_gene_list.txt"
+            )
+        else:
+            filtergenelist_file = os.path.join(
+                calicost_dir, "GRCh37_resources", "ig_gene_list.txt"
+            )
+
+    if filterregion_file is None:
+        if genome in ["hg38", "GRCh38"]:
+            filterregion_file = os.path.join(
+                calicost_dir, "GRCh38_resources", "HLA_regions.bed"
+            )
+        else:
+            filterregion_file = os.path.join(
+                calicost_dir, "GRCh37_resources", "HLA_regions.bed"
+            )
+
+    # Create bamlist.tsv file
+    bamlist_fn = os.path.join(config_dir, "bamlist.tsv")
+    with open(bamlist_fn, "w") as fp:
+        for bam_path, sid, sp_dir in bamlist_entries:
+            fp.write("%s\t%s\t%s\n" % (bam_path, sid, sp_dir))
+
+    # Step 1: Preprocessing (genotyping and phasing)
+    if not skip_preprocessing:
+        config_pre_fn = os.path.join(config_dir, "config.yaml")
+        with open(config_pre_fn, "w") as fp:
+            fp.write("# path to executables or their parent directories\n")
+            fp.write("calicost_dir: %s\n" % calicost_dir)
+            fp.write("eagledir: %s\n" % os.path.dirname(eagle_fn))
+            fp.write("\n")
+            fp.write("# running parameters\n")
+            fp.write("# samtools sort (only used when joingly calling from multiple slices)\n")
+            fp.write("samtools_sorting_mem: \"%s\"\n" % samtools_sorting_mem)
+            fp.write("# cellsnp-lite\n")
+            fp.write("UMItag: \"%s\"\n" % umi_tag)
+            fp.write("cellTAG: \"%s\"\n" % cell_tag)
+            fp.write("nthreads_cellsnplite: %d\n" % nthreads_cellsnplite)
+            fp.write("region_vcf: %s\n" % snp_vcf_fn)
+            fp.write("# Eagle phasing\n")
+            fp.write("phasing_panel: %s\n" % panel_dir)
+            fp.write("chromosomes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]\n")
+            fp.write("\n")
+            fp.write("# input\n")
+            if is_multi:
+                fp.write("bamlist: %s\n" % bamlist_fn)
+            else:
+                # For single sample, use spaceranger_dir
+                single_spaceranger_dir = bamlist_entries[0][2]
+                fp.write("spaceranger_dir: %s\n" % single_spaceranger_dir)
+            fp.write("\n")
+            fp.write("# output\n")
+            fp.write("output_snpinfo: %s\n" % snp_dir)
+
+        # Create script for preprocessing
+        script_pre_fn = os.path.join(script_dir, "calicost.pre.sh")
+        s  = '''#!/bin/bash\n'''
+        s += '''# run CalicoST preprocessing.\n'''
+        s += '''\n'''
+        s += '''set -eux\n'''
+        s += '''\n'''
+        s += '''cd %s\n''' % calicost_dir
+        s += '''\n'''
+        s += '''snakemake --cores %d --configfile %s --snakefile %s/calicost.smk all\n''' % (
+            ncores, config_pre_fn, calicost_dir
+        )
+        s += '''\n'''
+        s += '''echo "[CalicoST Preprocessing] All Done!"\n'''
+        s += '''\n'''
+
+        with open(script_pre_fn, "w") as fp:
+            fp.write(s)
+        set_file_exe(script_pre_fn)
+
+        cmd = "/usr/bin/time -v %s" % script_pre_fn
+        ret, outs, errs = run_cmd(cmd)
+        if ret != 0:
+            return(ret)
+
+    # Step 2: Estimate tumor proportion per spot
+    if not skip_purity:
+        config_purity_fn = os.path.join(config_dir, "configuration_purity")
+        with open(config_purity_fn, "w") as fp:
+            fp.write("\n")
+            if is_multi:
+                fp.write("input_filelist : %s\n" % bamlist_fn)
+            else:
+                # For single sample, use spaceranger_dir
+                single_spaceranger_dir = bamlist_entries[0][2]
+                fp.write("spaceranger_dir : %s\n" % single_spaceranger_dir)
+            fp.write("snp_dir : %s\n" % snp_dir)
+            fp.write("output_dir : %s\n" % purity_dir)
+            fp.write("\n")
+            fp.write("# supporting files and preprocessing arguments\n")
+            fp.write("geneticmap_file : %s\n" % geneticmap_file)
+            fp.write("hgtable_file : %s\n" % hgtable_file)
+            fp.write("normalidx_file : None\n")
+            fp.write("tumorprop_file : None\n")
+            fp.write("alignment_files : \n")
+            fp.write("supervision_clone_file : None\n")
+            fp.write("filtergenelist_file : %s\n" % filtergenelist_file)
+            fp.write("filterregion_file : %s\n" % filterregion_file)
+            fp.write("secondary_min_umi : %d\n" % secondary_min_umi)
+            fp.write("bafonly : False\n")
+            fp.write("\n")
+            fp.write("# phase switch probability\n")
+            fp.write("nu : 1.0\n")
+            fp.write("logphase_shift : -2.0\n")
+            fp.write("npart_phasing : 3\n")
+            fp.write("\n")
+            fp.write("# HMRF configurations\n")
+            fp.write("n_clones : %d\n" % n_clones)
+            fp.write("n_clones_rdr : %d\n" % n_clones_rdr)
+            fp.write("min_spots_per_clone : %d\n" % min_spots_per_clone)
+            fp.write("min_avgumi_per_clone : %d\n" % min_avgumi_per_clone)
+            fp.write("maxspots_pooling : %d\n" % maxspots_pooling)
+            fp.write("tumorprop_threshold : %f\n" % tumorprop_threshold)
+            fp.write("max_iter_outer : 20\n")
+            fp.write("nodepotential : weighted_sum\n")
+            fp.write("initialization_method : rectangle\n")
+            fp.write("num_hmrf_initialization_start : 0\n")
+            fp.write("num_hmrf_initialization_end : 1\n")
+            fp.write("spatial_weight : %f\n" % spatial_weight)
+            fp.write("construct_adjacency_method : hexagon\n")
+            fp.write("construct_adjacency_w : 1.0\n")
+            fp.write("\n")
+            fp.write("# HMM configurations\n")
+            fp.write("n_states : 7\n")
+            fp.write("params : smp\n")
+            fp.write("t : 1-1e-4\n")
+            fp.write("t_phaseing : 0.9999\n")
+            fp.write("fix_NB_dispersion : False\n")
+            fp.write("shared_NB_dispersion : True\n")
+            fp.write("fix_BB_dispersion : False\n")
+            fp.write("shared_BB_dispersion : True\n")
+            fp.write("max_iter : 30\n")
+            fp.write("tol : 0.0001\n")
+            fp.write("gmm_random_state : 0\n")
+            fp.write("np_threshold : 1.0\n")
+            fp.write("np_eventminlen : 10\n")
+            fp.write("\n")
+            fp.write("# integer copy number\n")
+            fp.write("nonbalance_bafdist : 1.0\n")
+            fp.write("nondiploid_rdrdist : 10.0\n")
+
+        # Create script for purity estimation
+        script_purity_fn = os.path.join(script_dir, "calicost.purity.py")
+        s  = '''# run CalicoST tumor proportion estimation.\n'''
+        s += '''\n'''
+        s += '''import os\n'''
+        s += '''import subprocess\n'''
+        s += '''import sys\n'''
+        s += '''\n'''
+        s += '''# Set OMP_NUM_THREADS to avoid oversubscription\n'''
+        s += '''os.environ["OMP_NUM_THREADS"] = "1"\n'''
+        s += '''\n'''
+        s += '''calicost_purity_py = os.path.join("%s", "src", "calicost", "estimate_tumor_proportion.py")\n''' % calicost_dir
+        s += '''config_file = "%s"\n''' % config_purity_fn
+        s += '''\n'''
+        s += '''cmd = ["python", calicost_purity_py, "-c", config_file]\n'''
+        s += '''ret = subprocess.call(cmd)\n'''
+        s += '''\n'''
+        s += '''if ret == 0:\n'''
+        s += '''    print("[CalicoST Purity] All Done!")\n'''
+        s += '''else:\n'''
+        s += '''    print("[CalicoST Purity] Error occurred with return code: %d" % ret)\n'''
+        s += '''    sys.exit(ret)\n'''
+        s += '''\n'''
+
+        with open(script_purity_fn, "w") as fp:
+            fp.write(s)
+        set_file_exe(script_purity_fn)
+
+        cmd = "/usr/bin/time -v python %s" % script_purity_fn
+        ret, outs, errs = run_cmd(cmd)
+        if ret != 0:
+            return(ret)
+
+        # Set default tumorprop_file if not provided
+        if tumorprop_file is None:
+            tumorprop_file = os.path.join(purity_dir, "loh_estimator_tumor_prop.tsv")
+
+    # Step 3: Run CalicoST main (CNA calling)
+    config_cna_fn = os.path.join(config_dir, "configuration_cna")
+    with open(config_cna_fn, "w") as fp:
+        fp.write("\n")
+        if is_multi:
+            fp.write("input_filelist : %s\n" % bamlist_fn)
+        else:
+            # For single sample, use spaceranger_dir
+            single_spaceranger_dir = bamlist_entries[0][2]
+            fp.write("spaceranger_dir : %s\n" % single_spaceranger_dir)
+        fp.write("snp_dir : %s\n" % snp_dir)
+        fp.write("output_dir : %s\n" % out_dir)
+        fp.write("\n")
+        fp.write("# supporting files and preprocessing arguments\n")
+        fp.write("geneticmap_file : %s\n" % geneticmap_file)
+        fp.write("hgtable_file : %s\n" % hgtable_file)
+        fp.write("normalidx_file : None\n")
+        if tumorprop_file is None:
+            fp.write("tumorprop_file : None\n")
+        else:
+            fp.write("tumorprop_file : %s\n" % tumorprop_file)
+        fp.write("alignment_files : \n")
+        fp.write("supervision_clone_file : None\n")
+        fp.write("filtergenelist_file : %s\n" % filtergenelist_file)
+        fp.write("filterregion_file : %s\n" % filterregion_file)
+        fp.write("secondary_min_umi : %d\n" % secondary_min_umi)
+        fp.write("bafonly : False\n")
+        fp.write("\n")
+        fp.write("# phase switch probability\n")
+        fp.write("nu : 1.0\n")
+        fp.write("logphase_shift : -2.0\n")
+        fp.write("npart_phasing : 3\n")
+        fp.write("\n")
+        fp.write("# HMRF configurations\n")
+        fp.write("n_clones : %d\n" % n_clones)
+        fp.write("n_clones_rdr : %d\n" % n_clones_rdr)
+        fp.write("min_spots_per_clone : %d\n" % min_spots_per_clone)
+        fp.write("min_avgumi_per_clone : %d\n" % min_avgumi_per_clone)
+        fp.write("maxspots_pooling : %d\n" % maxspots_pooling)
+        fp.write("tumorprop_threshold : %f\n" % tumorprop_threshold)
+        fp.write("max_iter_outer : 20\n")
+        fp.write("nodepotential : weighted_sum\n")
+        fp.write("initialization_method : rectangle\n")
+        fp.write("num_hmrf_initialization_start : 0\n")
+        fp.write("num_hmrf_initialization_end : 1\n")
+        fp.write("spatial_weight : %f\n" % spatial_weight)
+        fp.write("construct_adjacency_method : hexagon\n")
+        fp.write("construct_adjacency_w : 1.0\n")
+        fp.write("\n")
+        fp.write("# HMM configurations\n")
+        fp.write("n_states : 7\n")
+        fp.write("params : smp\n")
+        fp.write("t : 1-1e-4\n")
+        fp.write("t_phaseing : 0.9999\n")
+        fp.write("fix_NB_dispersion : False\n")
+        fp.write("shared_NB_dispersion : True\n")
+        fp.write("fix_BB_dispersion : False\n")
+        fp.write("shared_BB_dispersion : True\n")
+        fp.write("max_iter : 30\n")
+        fp.write("tol : 0.0001\n")
+        fp.write("gmm_random_state : 0\n")
+        fp.write("np_threshold : 1.0\n")
+        fp.write("np_eventminlen : 10\n")
+        fp.write("\n")
+        fp.write("# integer copy number\n")
+        fp.write("nonbalance_bafdist : 1.0\n")
+        fp.write("nondiploid_rdrdist : 10.0\n")
+
+    # Create Python script to run CalicoST
+    script_fn = os.path.join(script_dir, "calicost.call.py")
+    s  = '''# run CalicoST CNA calling.\n'''
+    s += '''\n'''
+    s += '''import os\n'''
+    s += '''import subprocess\n'''
+    s += '''import sys\n'''
+    s += '''\n'''
+    s += '''# Set OMP_NUM_THREADS to avoid oversubscription\n'''
+    s += '''os.environ["OMP_NUM_THREADS"] = "1"\n'''
+    s += '''\n'''
+    s += '''calicost_main_py = os.path.join("%s", "src", "calicost", "calicost_main.py")\n''' % calicost_dir
+    s += '''config_file = "%s"\n''' % config_cna_fn
+    s += '''\n'''
+    s += '''cmd = ["python", calicost_main_py, "-c", config_file]\n'''
+    s += '''ret = subprocess.call(cmd)\n'''
+    s += '''\n'''
+    s += '''if ret == 0:\n'''
+    s += '''    print("[CalicoST] All Done!")\n'''
+    s += '''else:\n'''
+    s += '''    print("[CalicoST] Error occurred with return code: %d" % ret)\n'''
+    s += '''    sys.exit(ret)\n'''
+    s += '''\n'''
+
+    with open(script_fn, "w") as fp:
+        fp.write(s)
+    set_file_exe(script_fn)
+
+    cmd = "/usr/bin/time -v python %s" % script_fn
+    ret, outs, errs = run_cmd(cmd)
+    return(ret)
+
 
 
 ###############################################
@@ -751,186 +1232,135 @@ def run_xclone_call(
     xclone_plot = True,
     script_fn = None
 ):
-    s  = '''# run XClone CNA calling.\n'''
-    s += '''\n'''
-    s += '''\n'''
-    s += '''import anndata as ad\n'''
-    s += '''import gc\n'''
-    s += '''import os\n'''
-    s += '''import scanpy as sc\n'''
-    s += '''import sys\n'''
-    s += '''import xclone\n'''
-    s += '''\n'''
-    s += '''\n'''
-    s += '''def run_xclone_call(\n'''
-    s += '''    sample_id,\n'''
-    s += '''    baf_dir, rdr_dir,\n'''
-    s += '''    cell_anno_fn, ref_cell_types,\n'''
-    s += '''    out_dir,\n'''
-    s += '''    ncores,\n'''
-    s += '''    genome,\n'''
-    s += '''    cell_anno_key, plot_cell_anno_key, barcode_key,\n'''
-    s += '''    spot_pos_fn, set_spatial,\n'''
-    s += '''    xclone_plot\n'''
-    s += '''):\n'''
-    s += '''    # pre-check\n'''
-    s += '''    xclone.pp.efficiency_preview()\n'''
-    s += '''    xp_config = xclone.PreprocessingConfig(\n'''
-    s += '''        dataset_name = sample_id,\n'''
-    s += '''        module = "pre_check",\n'''
-    s += '''        rdr_data_dir = rdr_dir,\n'''
-    s += '''        baf_data_dir = baf_dir\n'''
-    s += '''    )\n'''
-    s += '''    xp_config.display()\n'''
-    s += '''    xclone.pp.load_Xdata(module = "pre_check",  config_file = xp_config)\n'''
-    s += '''\n'''
-    s += '''\n'''
-    s += '''    # load data\n'''
-    s += '''    ## rdr\n'''
-    s += '''    xp_config = xclone.PreprocessingConfig(\n'''
-    s += '''        dataset_name = sample_id,\n'''
-    s += '''        module = "RDR",\n'''
-    s += '''        barcodes_key = barcode_key,\n'''
-    s += '''        set_spatial = set_spatial,\n'''
-    s += '''        spot_position_file = spot_pos_fn,\n'''
-    s += '''        rdr_data_dir = rdr_dir\n'''
-    s += '''    )\n'''
-    s += '''    xp_config.genome_mode = "%s_genes" % genome\n'''
-    s += '''    xp_config.cell_anno_file = cell_anno_fn\n'''
-    s += '''    xp_config.cell_anno_key = cell_anno_key\n'''
-    s += '''    xp_config.display()\n'''
-    s += '''    RDR_adata = xclone.pp.load_Xdata(module = "RDR", config_file = xp_config)\n'''
-    s += '''\n'''
-    s += '''\n'''
-    s += '''    ## baf\n'''
-    s += '''    xp_config = xclone.PreprocessingConfig(\n'''
-    s += '''        dataset_name = sample_id,\n'''
-    s += '''        module = "BAF",\n'''
-    s += '''        barcodes_key = barcode_key,\n'''
-    s += '''        set_spatial = set_spatial,\n'''
-    s += '''        spot_position_file = spot_pos_fn,\n'''
-    s += '''        baf_data_dir = baf_dir\n'''
-    s += '''    )\n'''
-    s += '''    xp_config.genome_mode = "%s_genes" % genome\n'''
-    s += '''    xp_config.cell_anno_file = cell_anno_fn\n'''
-    s += '''    xp_config.cell_anno_key = cell_anno_key\n'''
-    s += '''    xp_config.display()\n'''
-    s += '''    BAF_adata = xclone.pp.load_Xdata(module = "BAF", config_file = xp_config)\n'''
-    s += '''\n'''
-    s += '''\n'''
-    s += '''    # run RDR module\n'''
-    s += '''    xconfig = xclone.XCloneConfig(\n'''
-    s += '''        dataset_name = sample_id,\n'''
-    s += '''        module = "RDR",\n'''
-    s += '''        set_spatial = set_spatial\n'''
-    s += '''    )\n'''
-    s += '''    xconfig.set_figure_params(xclone = True, fontsize = 18)\n'''
-    s += '''    xconfig.outdir = out_dir\n'''
-    s += '''    xconfig.cell_anno_key = cell_anno_key\n'''
-    s += '''    xconfig.ref_celltype = ref_cell_types\n'''
-    s += '''    xconfig.top_n_marker = 15 ##\n'''
-    s += '''    xconfig.filter_ref_ave = 1.8 ##\n'''
-    s += '''    xconfig.min_gene_keep_num = 1000 ##\n'''
-    s += '''    xconfig.marker_group_anno_key = cell_anno_key\n'''
-    s += '''    xconfig.xclone_plot = xclone_plot\n'''
-    s += '''    xconfig.plot_cell_anno_key = plot_cell_anno_key\n'''
-    s += '''    xconfig.fit_GLM_libratio = False\n'''
-    s += '''    xconfig.exclude_XY = False\n'''
-    s += '''    xconfig.remove_guide_XY = True\n'''
-    s += '''    xconfig.display()\n'''
-    s += '''    RDR_Xdata = xclone.model.run_RDR(RDR_adata, config_file = xconfig)\n'''
-    s += '''\n'''
-    s += '''    # to save memory as following BAF module will use multiprocessing.\n'''
-    s += '''    del RDR_Xdata\n'''
-    s += '''    gc.collect()\n'''
-    s += '''\n'''
-    s += '''\n'''
-    s += '''    # run BAF module\n'''
-    s += '''    xconfig = xclone.XCloneConfig(\n'''
-    s += '''        dataset_name = sample_id,\n'''
-    s += '''        module = "BAF",\n'''
-    s += '''        set_spatial = set_spatial\n'''
-    s += '''    )\n'''
-    s += '''    xconfig.update_info_from_rdr = False      # update using only BAF information.\n'''
-    s += '''    xconfig.set_figure_params(xclone = True, fontsize = 18)\n'''
-    s += '''    xconfig.outdir = out_dir\n'''
-    s += '''    xconfig.cell_anno_key = cell_anno_key\n'''
-    s += '''    xconfig.ref_celltype = ref_cell_types\n'''
-    s += '''    xconfig.xclone_plot = xclone_plot\n'''
-    s += '''    xconfig.plot_cell_anno_key = plot_cell_anno_key\n'''
-    s += '''    xconfig.bin_nproc = ncores\n'''
-    s += '''    xconfig.HMM_nproc = ncores\n'''
-    s += '''    xconfig.display()\n'''
-    s += '''    BAF_merge_Xdata = xclone.model.run_BAF(BAF_adata, config_file = xconfig)\n'''
-    s += '''\n'''
-    s += '''\n'''
-    s += '''    # run Combine module\n'''
-    s += '''    xconfig = xclone.XCloneConfig(\n'''
-    s += '''        dataset_name = sample_id,\n'''
-    s += '''        module = "Combine",\n'''
-    s += '''        set_spatial = set_spatial\n'''
-    s += '''    )\n'''
-    s += '''    xconfig.set_figure_params(xclone = True, fontsize = 18)\n'''
-    s += '''    xconfig.outdir = out_dir\n'''
-    s += '''    xconfig.cell_anno_key = cell_anno_key\n'''
-    s += '''    xconfig.ref_celltype = ref_cell_types\n'''
-    s += '''    xconfig.xclone_plot = xclone_plot\n'''
-    s += '''    xconfig.plot_cell_anno_key = plot_cell_anno_key\n'''
-    s += '''    xconfig.merge_loss = False\n'''
-    s += '''    xconfig.merge_loh = False\n'''
-    s += '''    xconfig.BAF_denoise = True\n'''
-    s += '''    xconfig.exclude_XY = True\n'''
-    s += '''    xconfig.display()\n'''
-    s += '''\n'''
-    s += '''    fn = os.path.join(out_dir, "data/RDR_adata_KNN_HMM_post.h5ad")\n'''
-    s += '''    RDR_Xdata = ad.read_h5ad(fn)\n'''
-    s += '''\n'''
-    s += '''    combine_Xdata = xclone.model.run_combine(\n'''
-    s += '''        RDR_Xdata,\n'''
-    s += '''        BAF_merge_Xdata,\n'''
-    s += '''        verbose = True,\n'''
-    s += '''        run_verbose = True,\n'''
-    s += '''        config_file = xconfig\n'''
-    s += '''    )\n'''
-    s += '''\n'''
-    s += '''\n'''
-    s += '''run_xclone_call(\n'''
-    s += '''    sample_id = "%s",\n''' % sample_id
-    s += '''    baf_dir = "%s/",\n''' % baf_dir
-    s += '''    rdr_dir = "%s/",\n''' % rdr_dir
-    s += '''    cell_anno_fn = "%s",\n''' % cell_anno_fn
-
-    if isinstance(ref_cell_types, str):
-        s += '''    ref_cell_types = "%s",\n''' % ref_cell_types
-    else:
-        s += '''    ref_cell_types = %s,\n''' % str(ref_cell_types)
-
-    s += '''    out_dir = "%s/",\n''' % out_dir
-    s += '''    ncores = %d,\n''' % ncores
-    s += '''    genome = "%s",\n''' % genome
-    s += '''    cell_anno_key = "%s",\n''' % cell_anno_key
-    s += '''    plot_cell_anno_key = "%s",\n''' % plot_cell_anno_key
-    s += '''    barcode_key = "%s",\n''' % barcode_key
-    s += '''    spot_pos_fn = %s,\n''' % str_or_none(spot_pos_fn)
-    s += '''    set_spatial = %s,\n''' % str(set_spatial)
-    s += '''    xclone_plot = %s\n''' % str(xclone_plot)
-    s += ''')\n'''
-    s += '''\n'''
-    s += '''print("[XClone] All Done!")\n'''
-    s += '''\n'''
+    # Import required modules
+    import anndata as ad
+    import gc
+    import xclone
 
     os.makedirs(out_dir, exist_ok = True)
 
-    if script_fn is None:
-        script_fn = os.path.join(out_dir, "xclone.call.py")
+    try:
+        # pre-check
+        xclone.pp.efficiency_preview()
+        xp_config = xclone.PreprocessingConfig(
+            dataset_name = sample_id,
+            module = "pre_check",
+            rdr_data_dir = rdr_dir,
+            baf_data_dir = baf_dir
+        )
+        xp_config.display()
+        xclone.pp.load_Xdata(module = "pre_check", config_file = xp_config)
 
-    with open(script_fn, "w") as fp:
-        fp.write(s)
-    set_file_exe(script_fn)
+        # load data
+        ## rdr
+        xp_config = xclone.PreprocessingConfig(
+            dataset_name = sample_id,
+            module = "RDR",
+            barcodes_key = barcode_key,
+            set_spatial = set_spatial,
+            spot_position_file = spot_pos_fn,
+            rdr_data_dir = rdr_dir
+        )
+        xp_config.genome_mode = "%s_genes" % genome
+        xp_config.cell_anno_file = cell_anno_fn
+        xp_config.cell_anno_key = cell_anno_key
+        xp_config.display()
+        RDR_adata = xclone.pp.load_Xdata(module = "RDR", config_file = xp_config)
 
-    cmd = "/usr/bin/time -v python %s" % script_fn
-    ret, outs, errs = run_cmd(cmd)
-    return(ret)
+        ## baf
+        xp_config = xclone.PreprocessingConfig(
+            dataset_name = sample_id,
+            module = "BAF",
+            barcodes_key = barcode_key,
+            set_spatial = set_spatial,
+            spot_position_file = spot_pos_fn,
+            baf_data_dir = baf_dir
+        )
+        xp_config.genome_mode = "%s_genes" % genome
+        xp_config.cell_anno_file = cell_anno_fn
+        xp_config.cell_anno_key = cell_anno_key
+        xp_config.display()
+        BAF_adata = xclone.pp.load_Xdata(module = "BAF", config_file = xp_config)
+
+        # run RDR module
+        xconfig = xclone.XCloneConfig(
+            dataset_name = sample_id,
+            module = "RDR",
+            set_spatial = set_spatial
+        )
+        xconfig.set_figure_params(xclone = True, fontsize = 18)
+        xconfig.outdir = out_dir
+        xconfig.cell_anno_key = cell_anno_key
+        xconfig.ref_celltype = ref_cell_types
+        xconfig.top_n_marker = 15
+        xconfig.filter_ref_ave = 1.8
+        xconfig.min_gene_keep_num = 1000
+        xconfig.marker_group_anno_key = cell_anno_key
+        xconfig.xclone_plot = xclone_plot
+        xconfig.plot_cell_anno_key = plot_cell_anno_key
+        xconfig.fit_GLM_libratio = False
+        xconfig.exclude_XY = False
+        xconfig.remove_guide_XY = True
+        xconfig.display()
+        RDR_Xdata = xclone.model.run_RDR(RDR_adata, config_file = xconfig)
+
+        # to save memory as following BAF module will use multiprocessing.
+        del RDR_Xdata
+        gc.collect()
+
+        # run BAF module
+        xconfig = xclone.XCloneConfig(
+            dataset_name = sample_id,
+            module = "BAF",
+            set_spatial = set_spatial
+        )
+        xconfig.update_info_from_rdr = False      # update using only BAF information.
+        xconfig.set_figure_params(xclone = True, fontsize = 18)
+        xconfig.outdir = out_dir
+        xconfig.cell_anno_key = cell_anno_key
+        xconfig.ref_celltype = ref_cell_types
+        xconfig.xclone_plot = xclone_plot
+        xconfig.plot_cell_anno_key = plot_cell_anno_key
+        xconfig.bin_nproc = ncores
+        xconfig.HMM_nproc = ncores
+        xconfig.display()
+        BAF_merge_Xdata = xclone.model.run_BAF(BAF_adata, config_file = xconfig)
+
+        # run Combine module
+        xconfig = xclone.XCloneConfig(
+            dataset_name = sample_id,
+            module = "Combine",
+            set_spatial = set_spatial
+        )
+        xconfig.set_figure_params(xclone = True, fontsize = 18)
+        xconfig.outdir = out_dir
+        xconfig.cell_anno_key = cell_anno_key
+        xconfig.ref_celltype = ref_cell_types
+        xconfig.xclone_plot = xclone_plot
+        xconfig.plot_cell_anno_key = plot_cell_anno_key
+        xconfig.merge_loss = False
+        xconfig.merge_loh = False
+        xconfig.BAF_denoise = True
+        xconfig.exclude_XY = True
+        xconfig.display()
+
+        fn = os.path.join(out_dir, "data/RDR_adata_KNN_HMM_post.h5ad")
+        RDR_Xdata = ad.read_h5ad(fn)
+
+        combine_Xdata = xclone.model.run_combine(
+            RDR_Xdata,
+            BAF_merge_Xdata,
+            verbose = True,
+            run_verbose = True,
+            config_file = xconfig
+        )
+
+        info("[XClone] All Done!")
+        return(0)
+
+    except Exception as e:
+        error("[XClone] Error occurred: %s" % str(e))
+        return(1)
 
 
 
