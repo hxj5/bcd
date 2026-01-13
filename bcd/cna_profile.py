@@ -1888,14 +1888,14 @@ def calicost_extract_cna_prob(
     # Handle duplicate barcodes and genes
     if clone_df['BARCODES'].duplicated().any():
         n_dup = clone_df['BARCODES'].duplicated().sum()
-        warning(f"Found {n_dup} duplicate barcodes in clone_labels.tsv. " \
+        warn(f"Found {n_dup} duplicate barcodes in clone_labels.tsv. " \
                 "Keeping first occurrence.")
         clone_df = clone_df.drop_duplicates(
             subset = 'BARCODES', keep = 'first')
 
     if cnv_df['gene'].duplicated().any():
         n_dup = cnv_df['gene'].duplicated().sum()
-        warning(f"Found {n_dup} duplicate genes in cnv_genelevel.tsv. "  \
+        warn(f"Found {n_dup} duplicate genes in cnv_genelevel.tsv. "  \
                 "Keeping first occurrence.")
         cnv_df = cnv_df.drop_duplicates(
             subset = 'gene', keep = 'first')
