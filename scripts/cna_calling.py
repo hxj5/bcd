@@ -39,6 +39,7 @@ def cna_calling_main(
     gmap_fn,
     snp_vcf_fn,
     panel_dir,
+    xclone_n_clones = None,
     fig_dpi = 300,
     script_dir = None,
     verbose = True
@@ -180,6 +181,7 @@ def cna_calling_main(
         cell_anno_key = "cell_type",
         plot_cell_anno_key = "cell_type",
         barcode_key = "cell",
+        xclone_n_clones = xclone_n_clones,
         spot_pos_fn = spot_pos_fn,
         set_spatial = False if spot_pos_fn is None else True,
         xclone_plot = True,
@@ -1143,6 +1145,7 @@ def run_xclone(
     cell_anno_key,
     plot_cell_anno_key,
     barcode_key,
+    xclone_n_clones = None,
     set_spatial = True,
     xclone_plot = True,
     script_dir = None
@@ -1207,6 +1210,7 @@ def run_xclone(
         plot_cell_anno_key = plot_cell_anno_key,
         barcode_key = barcode_key,
         spot_pos_fn = spot_pos_fn,
+        xclone_n_clones = xclone_n_clones,
         set_spatial = set_spatial,
         xclone_plot = xclone_plot,
         script_fn = os.path.join(script_dir, "xclone.call.py")
@@ -1228,6 +1232,7 @@ def run_xclone_call(
     cell_anno_key,
     plot_cell_anno_key,
     barcode_key,
+    xclone_n_clones = None,
     set_spatial = True,
     xclone_plot = True,
     script_fn = None
@@ -1301,6 +1306,9 @@ def run_xclone_call(
         xconfig.fit_GLM_libratio = False
         xconfig.exclude_XY = False
         xconfig.remove_guide_XY = True
+        # set number of clones
+        xconfig.n_clones = xclone_n_clones
+
         xconfig.display()
         RDR_Xdata = xclone.model.run_RDR(RDR_adata, config_file = xconfig)
 

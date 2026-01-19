@@ -2423,7 +2423,7 @@ def xclone_extract_cna_prob(
     if verbose:
         info("XClone adata shape = %s." % str(xclone_adata.shape))
 
-    prob = xclone_adata.layers['prob1_merge']
+    prob = xclone_adata.layers['prob1_merge_refined']
     # prob_merge = np.stack([copy_loss, loh, copy_neutral, copy_gain], axis = -1)
 
     # Prepare obs and var DataFrames
