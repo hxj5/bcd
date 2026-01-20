@@ -151,10 +151,40 @@ The inputs to the pipeline include:
 
 Tool-specific object files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
-The object file storing the CNA detection results of each tool, e.g.,
+The object file storing the CNA detection results of each tool. Below are the input requirements for each tool:
 
-* for inferCNV, the ``MCMC_inferCNV_obj.rds`` file;
-* for Numbat, the ``joint_post_2.tsv`` file.
+**InferCNV**
+    - Input: RDS file (``obj_fn``) storing the inferCNV object (typically ``MCMC_inferCNV_obj.rds``)
+    - Format: R Seurat object with expression matrix (``obj@expr.data``)
+    - Output: Cell × gene CNA expression matrix used for ROC/PRC analysis
+
+**Numbat**
+    - Input: TSV file (``joint_post_fn``) with genomic segments and CNV posterior probabilities
+    - Format: Tab-delimited file with columns: chrom, start, end, cell, cnv_status, p_cnv, posterior
+    - Output: Cell × region CNA probability matrix
+
+**CopyKAT**
+    - Input: TSV/CSV file (``expr_mtx_fn``) with raw CNA results (gene × cell matrix)
+    - Format: Typically named ``{sample_name}_CNA_raw_results_gene_by_cell.txt``
+    - Output: Gene × cell CNA expression matrix
+    - Notes: Can contain relative copy number values or binary CNA calls
+
+**XClone**
+    - Input: H5AD file (``combine_fn``) with combined CNA analysis results
+    - Format: AnnData object with CNA probability data stored in ``.layers['prob1_merge_refined']``
+    - Typical path: ``./xclone/data/combined_final.h5ad``
+    - Output: Cell × gene CNA probability matrix
+
+**CalicoST**
+    - Input: Two TSV files
+    
+      - CNV file (``cnv_fn``): Gene-level CNV calls (typically ``cnv_genelevel.tsv``)
+      - Clone file (``clone_fn``): Clone labels and assignments (typically ``clone_labels.tsv``)
+    
+    - Format: Tab-delimited files
+    - CNV file columns: chrom, start, end, gene, clone, cnv_type (or similar)
+    - Clone file columns: cell, clone
+    - Output: Cell × gene CNA matrix
 
 
 Ground truth of clonal CNA profiles (TSV file)
@@ -299,18 +329,32 @@ An example is:
 
 .. code-block:: python
 
-    from bcd.tumor_nontumor import tumor_nontumor_main, InferCNV, Numbat
+    from bcd.tumor_nontumor import (
+        tumor_nontumor_main,
+        InferCNV,
+        Numbat,
+        CopyKAT,
+        XClone,
+        CalicoST
+    )
 
-    infercnv = InferCNV(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
-    numbat = Numbat(clone_post_fn = "./numbat/clone_post_2.tsv")
+    # Define arguments for each tool
+    infercnv = InferCNV(obj_fn="./infercnv/MCMC_inferCNV_obj.rds")
+    numbat = Numbat(clone_post_fn="./numbat/clone_post_2.tsv")
+    copykat = CopyKAT(ploidy_pred_fn="./copykat/copykat_pred.tsv")
+    xclone = XClone(xclone_tumor_pred_fn="./xclone/xclone_tumor_predictions.tsv")
+    calicost = CalicoST(tumor_prop_fn="./calicost/tumor_proportions.tsv")
 
+    # Run tumor vs normal classification
     ret, res = tumor_nontumor_main(
-        sid = "test",
-        tool_list = [infercnv, numbat],
-        out_dir = "./out",
-        truth_fn = "./data/truth.tsv",
-        tumor_labels = "cancer",
-        verbose = True
+        sid="HCC-3",
+        tool_list=[infercnv, numbat, copykat, xclone],
+        out_dir="./out",
+        truth_fn="./data/truth.tsv",
+        tumor_labels="tumor",
+        overlap_how="isec",
+        fig_dpi=300,
+        verbose=True
     )
     
     print("return code = %d" % ret)
@@ -359,6 +403,8 @@ truth_fn : str
 
 tumor_labels : str or list of str
     The cell type labels for tumor cells in `truth_fn`.
+    Can be a single label (e.g., "tumor") or a list of labels
+    (e.g., ["cancer", "malignant"]) that should be classified as tumor.
 
 overlap_how : {"isec"}
     How to subset the tool matrices given the overlap cells.
@@ -378,9 +424,51 @@ verbose : bool, default True
 
 Input
 ^^^^^
-The inputs to the pipeline include:
 
-TO BE ADDED ...
+The pipeline requires the following inputs:
+
+1. **Tool-specific files**: Predictions/outputs from each tool in the ``tool_list``.
+
+2. **Ground truth file** (``truth_fn``): A header-free TSV file with two columns:
+   
+   - ``barcode``: Cell barcode/ID
+   - ``annotation``: Cell type annotation (any string labels)
+   
+   Example:
+   
+   .. code-block:: text
+   
+       AAACCCAAGAAACTG  tumor
+       AAACCCAAGAAACTG  normal
+       AAACCCAAGAAACTT  tumor
+       AAACCCAAGAAACTT  normal
+       ...
+
+Tool-specific input files are described below:
+
+**InferCNV**
+    - Input: RDS file (``obj_fn``) storing the inferCNV object (typically ``MCMC_inferCNV_obj.rds``)
+    - Format: R Seurat object with expression matrix
+
+**Numbat**
+    - Input: TSV file (``clone_post_fn``) with columns: ``cell`` and ``compartment_opt``
+    - Format: Tab-delimited file
+    - Example columns: cell, chrom, p_cnv, state, ..., compartment_opt (normal/tumor)
+
+**CopyKAT**
+    - Input: TSV file (``ploidy_pred_fn``) with columns: ``cell.names`` and ``copykat.pred``
+    - Format: Tab-delimited or CSV
+    - Valid predictions: "diploid" (normal) or "aneuploid" (tumor)
+
+**XClone**
+    - Input: TSV file (``xclone_tumor_pred_fn``) with columns: ``barcode`` and ``prediction``
+    - Format: Tab-delimited with header
+    - Valid predictions: "normal" or "tumor"
+
+**CalicoST**
+    - Input: TSV file (``tumor_prop_fn``) with columns: ``BARCODES``, ``clone_label``, ``tumor_proportion``
+    - Format: Tab-delimited
+    - Uses K-means clustering on ``tumor_proportion`` to classify cells
 
 
 
@@ -388,7 +476,52 @@ TO BE ADDED ...
 
 Output
 ^^^^^^
-TO BE ADDED ...
+
+The pipeline generates outputs organized in the following directory structure:
+
+.. code-block:: text
+
+    out_dir/
+    ├── 0_pp/                           # Preprocessing
+    │   ├── <tool_id>/
+    │   │   └── <tool_id>_predictions.tsv
+    │   └── truth/
+    │       └── truth.tsv
+    ├── 1_overlap/                      # Cell overlap analysis
+    │   ├── overlap.tools.intersect.cells.tsv
+    │   ├── overlap.tools_and_truth.intersect.cells.tsv
+    │   ├── overlap.<tool_id>.tsv       # Per-tool subset (1 per tool)
+    │   └── overlap.truth.tsv
+    ├── 2_metric/
+    │   └── metrics.tsv                 # Evaluation metrics
+    └── 3_plot/
+        ├── <sample_id>.labels.confusion_matrix.jpg
+        ├── <sample_id>.labels.histogram.jpg
+        ├── <sample_id>.metrics.bar.jpg
+        └── <sample_id>.metrics.radar.jpg
+
+**Output File Descriptions**
+
+``metrics.tsv``
+    Performance metrics for each tool. Columns:
+    
+    - ``tool``: Tool name
+    - ``metric``: Metric type (accuracy, precision, recall, F1, ARI)
+    - ``value``: Metric value (0-1 range)
+
+``overlap.<tool_id>.tsv``
+    Subset of each tool's predictions, including only cells present in all tools and ground truth.
+    Columns: ``barcode``, ``prediction``, plus tool-specific columns.
+
+``overlap.truth.tsv``
+    Ground truth labels for overlapping cells.
+
+**Visualization Files**
+
+- ``confusion_matrix.jpg``: Confusion matrices for all tools in a grid layout
+- ``histogram.jpg``: Distribution of predicted tumor/normal labels per tool
+- ``metrics.bar.jpg``: Bar plots of metrics (accuracy, precision, recall, F1, ARI) per tool
+- ``metrics.radar.jpg``: Radar chart showing all metrics for each tool
 
 
 
@@ -396,7 +529,52 @@ TO BE ADDED ...
 
 Implementation
 ^^^^^^^^^^^^^^
-TO BE ADDED ...
+
+The pipeline performs the following steps:
+
+1. **Preprocessing** (Stage 0)
+   
+   - Each tool is processed to extract tumor predictions
+   - Outputs are standardized to TSV format with columns: ``barcode``, ``prediction``
+   - Tool-specific processing:
+   
+     - **InferCNV**: Uses hierarchical clustering on expression matrix with 2 clusters (normal/tumor)
+     - **Numbat**: Extracts ``compartment_opt`` column
+     - **CopyKAT**: Maps "diploid" → "normal", "aneuploid" → "tumor"
+     - **XClone**: Validates input predictions
+     - **CalicoST**: Applies K-means clustering on tumor_proportion values
+
+2. **Cell Overlap Analysis** (Stage 1)
+   
+   - Identifies cells present in ALL tools and ground truth
+   - Generates intersection lists for quality control
+   - Subsets all prediction files to contain only overlapping cells
+   - Ensures fair comparison across all tools
+
+3. **Metrics Calculation** (Stage 2)
+   
+   - Converts binary predictions using positive label "tumor"
+   - Calculates for each tool:
+   
+     - **Accuracy**: (TP + TN) / (TP + TN + FP + FN)
+     - **Precision**: TP / (TP + FP)
+     - **Recall**: TP / (TP + FN)
+     - **F1 Score**: 2 × (Precision × Recall) / (Precision + Recall)
+     - **ARI** (Adjusted Rand Index): Clustering similarity metric
+
+4. **Visualization** (Stage 3)
+   
+   - **Confusion matrices**: Shows prediction vs ground truth for each tool
+   - **Histograms**: Distribution of predicted labels
+   - **Bar plots**: Performance metrics comparison
+   - **Radar chart**: Multi-metric performance visualization
+
+**Key Features**
+
+- **Standardized input format**: All tools output predictions to TSV with ``barcode`` and ``prediction`` columns
+- **Cell overlap tracking**: Ensures valid comparisons by using common cell set
+- **Comprehensive evaluation**: Multiple metrics for robust performance assessment
+- **Automated visualization**: Generates publication-quality figures
 
 
 
