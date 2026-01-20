@@ -1075,13 +1075,19 @@ def run_predict(
                 verbose = verbose
             )
 
+        elif tid == "xclone":
+            tool.predict(
+                out_fn = out_fn,
+                verbose = verbose
+            )
+
         elif tid == "xclone_rdr":
             tool.predict(
                 out_fn,
                 random_state = 123,
                 verbose = verbose
             )
-
+            
         else:
             raise ValueError(f"Error: unknown tool id '{tid}'.")
 
@@ -1720,6 +1726,99 @@ def numbat_extract_tumor(
 #------------------ tools.xclone ------------------#
 ####################################################
 
+class XClone(Tool):
+    def __init__(self, xclone_tumor_pred_fn):
+        """XClone object.
+
+        Parameters
+        ----------
+        xclone_tumor_pred_fn : str
+            Path to XClone TSV file with columns 'barcode' and 'prediction'.
+        """
+        super().__init__(tid = "XClone")
+        self.xclone_tumor_pred_fn = xclone_tumor_pred_fn
+
+
+    def predict(self, out_fn, verbose = False):
+        """Extract tumor predictions from XClone output.
+
+        Reads XClone TSV file with barcode and prediction columns,
+        validates the data, and saves to a new TSV file.
+
+        Saves a TSV file with columns:
+        - ``barcode``, ``prediction`` ('normal' or 'tumor').
+        """
+        return xclone_extract_tumor_prediction(
+            xclone_tumor_pred_fn = self.xclone_tumor_pred_fn,
+            out_fn = out_fn,
+            delimiter = '\t',
+            verbose = verbose
+        )
+
+
+
+def xclone_extract_tumor_prediction(
+    xclone_tumor_pred_fn,
+    out_fn,
+    delimiter = '\t',
+    verbose = False
+):
+    """Extract tumor predictions from XClone output.
+
+    Parameters
+    ----------
+    xclone_tumor_pred_fn : str
+        Path to XClone TSV file containing columns: 'barcode' and 'prediction'.
+    out_fn : str
+        Output file path for tumor predictions.
+    delimiter : str, default '\\t'
+        Delimiter used in the input TSV file.
+    verbose : bool, default False
+        Whether to show detailed logging information.
+
+    Returns
+    -------
+    str
+        Path to output prediction file.
+    """
+    # Check args and load data.
+    assert_e(xclone_tumor_pred_fn)
+
+    df = pd.read_csv(xclone_tumor_pred_fn, delimiter = delimiter)
+    required_cols = ['barcode', 'prediction']
+    if not all(col in df.columns for col in required_cols):
+        raise ValueError(f"TSV must contain columns: {required_cols}")
+
+    # Validate prediction values
+    valid_preds = {'normal', 'tumor'}
+    if not set(df['prediction']).issubset(valid_preds):
+        invalid_preds = set(df['prediction']) - valid_preds
+        warn(f"Invalid prediction values found: {invalid_preds}. "
+             f"Expected: {valid_preds}")
+        df = df.loc[df['prediction'].isin(valid_preds), :].copy()
+        warn(f"{len(df)} cells left after removing invalid predictions!")
+
+    # Create output DataFrame
+    result_df = pd.DataFrame({
+        'barcode': df['barcode'],
+        'prediction': df['prediction']
+    })
+
+
+    # Save to TSV
+    result_df.to_csv(out_fn, sep = '\t', index = False)
+    info(f"Predictions saved to '{out_fn}'.")
+
+
+    # Print summary
+    n_cells = len(result_df)
+    n_tumor = sum(result_df['prediction'] == 'tumor')
+    n_normal = n_cells - n_tumor
+    info(f"Processed {n_cells} cells.")
+    info(f"Number of tumor cells: {n_tumor}")
+    info(f"Number of normal cells: {n_normal}")
+
+    return(out_fn)
 
 
 
