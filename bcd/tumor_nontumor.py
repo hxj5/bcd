@@ -1265,16 +1265,19 @@ def calicost_predict_tumor_from_prop(
 
 
     # Apply K-means clustering
-    tumor_proportions = df[prop_col].values
+    # sklearn expects 2D feature matrix: (n_samples, n_features).
+    # Here we have a single feature: tumor_proportion.
+    tumor_proportions = df[prop_col].to_numpy(dtype = float).reshape(-1, 1)
     kmeans = KMeans(n_clusters = n_clusters, random_state = random_state)
     cluster_labels = kmeans.fit_predict(tumor_proportions)
 
 
     # Identify tumor cluster (higher mean tumor_proportion)
+    tumor_proportions_1d = tumor_proportions.ravel()
     mean_scores = np.zeros(n_clusters)
     for cluster in range(n_clusters):
         cluster_cells = cluster_labels == cluster
-        mean_scores[cluster] = np.mean(tumor_proportions[cluster_cells])
+        mean_scores[cluster] = np.mean(tumor_proportions_1d[cluster_cells])
     tumor_cluster = np.argmax(mean_scores)
     predictions = np.where(
         cluster_labels == tumor_cluster, 'tumor', 'normal')
@@ -1284,7 +1287,7 @@ def calicost_predict_tumor_from_prop(
     result_df = pd.DataFrame({
         'barcode': df['BARCODES'],
         'prediction': predictions,
-        'tumor_proportion': tumor_proportions
+        'tumor_proportion': tumor_proportions_1d
     })
     result_df.to_csv(out_fn, sep = '\t', index = False)
     info(f"Predictions saved to '{out_fn}'.")
@@ -1300,8 +1303,8 @@ def calicost_predict_tumor_from_prop(
 
     n_tumor = np.sum(predictions == 'tumor')
     info(f"Processed {n_cells} cells after filtering.")
-    info(f"%s tumor_proportion cluster centers: %s." % \
-         (self.tid, cluster_centers))
+    info("CalicoST tumor_proportion cluster centers: %s." % \
+         (cluster_centers,))
     info(f"Selected threshold: {threshold:.4f} " \
          "(cells > threshold classified as tumor)")
     info(f"Number of tumor cells: {n_tumor}.")
@@ -1653,25 +1656,28 @@ class Numbat(Tool):
     def predict(self, out_fn, verbose = False):
         """Predict tumor cells from Numbat output.
 
-        Saves a TSV file with columns: `barcode`, `prediction`
-        ('normal' or 'tumor') to out_dir/numbat_predictions.tsv.
+        Predict tumor vs. normal by clustering on `p_cnv` (probability of CNV),
+        forcing 2 clusters, then labeling the higher-mean `p_cnv` cluster as
+        'tumor' and the other as 'normal'.
+
+        Saves a TSV file with columns: `barcode`, `prediction` ('normal' or
+        'tumor'), and `p_cnv`.
         """
-        return numbat_extract_tumor(
+        return numbat_predict_tumor_from_p_cnv(
             clone_post_fn = self.clone_post_fn,
             out_fn = out_fn,
             barcode_col = 'cell',
-            label_col = 'compartment_opt',
+            p_cnv_col = 'p_cnv',
             delimiter = '\t',
             verbose = verbose
         )
 
 
 
-def numbat_extract_tumor(
+def numbat_predict_tumor_from_p_cnv(
     clone_post_fn,
     out_fn,
     barcode_col = 'cell',
-    label_col = 'compartment_opt',
     p_cnv_col = 'p_cnv',
     delimiter = '\t',
     verbose = False
@@ -1680,41 +1686,56 @@ def numbat_extract_tumor(
     assert_e(clone_post_fn)
 
     df = pd.read_csv(clone_post_fn, delimiter = delimiter)
-    required_cols = [barcode_col, label_col, p_cnv_col]
+    required_cols = [barcode_col, p_cnv_col]
     if not all(col in df.columns for col in required_cols):
         raise ValueError(f"TSV must contain columns: {required_cols}")
 
 
-    # Filter out rows with empty or invalid labels.
+    # Filter out rows with empty/invalid p_cnv.
     n_cells_init = len(df)
-    df = df.dropna(subset = [label_col])
-    df = df.loc[df[label_col].isin(['normal', 'tumor'])].copy()
+    df = df.dropna(subset = [p_cnv_col]).copy()
+    df[p_cnv_col] = pd.to_numeric(df[p_cnv_col], errors = 'coerce')
+    df = df.dropna(subset = [p_cnv_col]).copy()
     n_cells = len(df)
     n_removed = n_cells_init - n_cells
     if n_removed > 0:
-        warn(f"Removed %d cells with empty/invalid '%s' values." % \
-            (n_removed, label_col))
+        warn("Removed %d cells with empty/invalid '%s' values." % \
+            (n_removed, p_cnv_col))
     if n_cells == 0:
-        error(f"No cells remain after removing empty/invalid '%s' values." % \
-              label_col)
+        error("No cells remain after removing empty/invalid '%s' values." % \
+              p_cnv_col)
         raise ValueError
+
+
+    # Cluster on p_cnv into 2 groups, label higher-mean cluster as tumor.
+    n_clusters = 2
+    x = df[p_cnv_col].to_numpy(dtype = float).reshape(-1, 1)
+    kmeans = KMeans(n_clusters = n_clusters, random_state = 123)
+    cluster_labels = kmeans.fit_predict(x)
+
+    x_1d = x.ravel()
+    mean_scores = np.zeros(n_clusters)
+    for cluster in range(n_clusters):
+        mean_scores[cluster] = np.mean(x_1d[cluster_labels == cluster])
+    tumor_cluster = int(np.argmax(mean_scores))
+    pred = np.where(cluster_labels == tumor_cluster, 'tumor', 'normal')
 
 
     # Save to TSV
     result_df = pd.DataFrame({
         'barcode': df[barcode_col].to_numpy(),
-        'prediction': df[label_col].to_numpy(),
-        'p_cnv': df[p_cnv_col].to_numpy()
+        'prediction': pred,
+        'p_cnv': x_1d
     })
     result_df.to_csv(out_fn, sep = '\t', index = False)
     info(f"Predictions saved to {out_fn}.")
 
 
     # Print Summary.
-    df = pd.read_csv(out_fn, sep = '\t')
-    n_cells = df.shape[0]
-    n_tumor = np.sum(df['prediction'] == 'tumor')
-    n_normal = np.sum(df['prediction'] == 'normal')
+    n_tumor = int(np.sum(pred == 'tumor'))
+    n_normal = int(n_cells - n_tumor)
+    cluster_centers = kmeans.cluster_centers_.flatten()
+    info("Numbat p_cnv cluster centers: %s." % (cluster_centers,))
     info("Number of all_cells=%d; tumor_cells=%d; normal_cells=%d." % \
         (n_cells, n_tumor, n_normal))
 
