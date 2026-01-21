@@ -1265,7 +1265,7 @@ def calicost_predict_tumor_from_prop(
 
 
     # Apply K-means clustering
-    tumor_proportions = df[prop_col].values.reshape(-1, 1)
+    tumor_proportions = df[prop_col].values
     kmeans = KMeans(n_clusters = n_clusters, random_state = random_state)
     cluster_labels = kmeans.fit_predict(tumor_proportions)
 
