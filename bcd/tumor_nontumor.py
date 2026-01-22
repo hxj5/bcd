@@ -745,8 +745,11 @@ def plot_labels_confusion_matrix(
         fig_nrow, fig_ncol,
         figsize = (fig_width, fig_height)
     )
+    # Handle axes array - flatten if 2D, convert to list if single
     if n == 1:
         axes = [axes]
+    elif isinstance(axes, np.ndarray) and axes.ndim > 1:
+        axes = axes.flatten()
 
     df = pd.read_csv(truth_fn, sep = '\t')
     truth_labels = df['annotation'].to_numpy()
