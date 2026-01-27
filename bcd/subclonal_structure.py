@@ -1077,7 +1077,7 @@ class CopyKAT(Tool):
         Saves a TSV file with columns: 
         - ``barcode``, ``prediction``.
         """
-        return predict_subclones_from_hclust(
+        return predict_subclones_from_copykat_hclust(
             hclust_fn = self.hclust_fn,
             out_fn = out_fn,
             k = k,
@@ -1087,7 +1087,7 @@ class CopyKAT(Tool):
         
         
         
-def predict_subclones_from_hclust(
+def predict_subclones_from_copykat_hclust(
     hclust_fn,
     out_fn,
     k,
@@ -1114,8 +1114,8 @@ def predict_subclones_from_hclust(
     s += '''    col.names = TRUE\n'''
     s += ''')\n'''
     s += '''\n'''
-
-    script_fn = os.path.join(tmp_dir, "predict_subclones_from_hclust.R")
+    
+    script_fn = os.path.join(tmp_dir, "predict_subclones_from_copykat_hclust.R")
     with open(script_fn, "w") as fp:
         fp.write(s)
 
