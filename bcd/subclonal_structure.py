@@ -687,12 +687,20 @@ def plot_labels_confusion_matrix(
         fig_nrow, fig_ncol, 
         figsize = (fig_width, fig_height)
     )
-    if n == 1:
+    # Handle different return types from plt.subplots()
+    # plt.subplots() can return: single Axes (n=1), 1D array (1 row/col), or 2D array
+    if isinstance(axes, np.ndarray):
+        axes = axes.flatten()
+    else:
         axes = [axes]
+    
+    # Hide unused subplots if we have more subplots than tools
+    for i in range(n, len(axes)):
+        axes[i].set_visible(False)
 
     df = pd.read_csv(truth_fn, sep = '\t')
     truth_labels = df['annotation'].to_numpy()
-    for ax, tool, tool_fn in zip(axes, tool_list, tool_fn_list):
+    for ax, tool, tool_fn in zip(axes[:n], tool_list, tool_fn_list):
         tid = tool.tid
         if verbose:
             info("process %s ..." % tid)
