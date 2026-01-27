@@ -741,19 +741,33 @@ def plot_labels_confusion_matrix(
         fig_width = 2.5 * fig_ncol
     if fig_height is None:
         fig_height = 2.5 * fig_nrow
+    
+    # Create subplots with exact number needed (no empty subplots)
     fig, axes = plt.subplots(
         fig_nrow, fig_ncol,
         figsize = (fig_width, fig_height)
     )
+    
     # Handle axes array - flatten if 2D, convert to list if single
     if n == 1:
         axes = [axes]
-    elif isinstance(axes, np.ndarray) and axes.ndim > 1:
+    elif fig_nrow == 1:
+        axes = [axes] if not isinstance(axes, np.ndarray) else axes.tolist()
+    else:
         axes = axes.flatten()
+    
+    # Hide unused subplots
+    for idx in range(n, len(axes)):
+        axes[idx].set_visible(False)
 
+    # Publication-ready styling
+    title_fontsize = 10
+    label_fontsize = 9
+    annot_fontsize = 11
+    
     df = pd.read_csv(truth_fn, sep = '\t')
     truth_labels = df['annotation'].to_numpy()
-    for ax, tool, tool_fn in zip(axes, tool_list, tool_fn_list):
+    for ax, tool, tool_fn in zip(axes[:n], tool_list, tool_fn_list):
         tid = tool.tid
         if verbose:
             info("process %s ..." % tid)
@@ -769,11 +783,13 @@ def plot_labels_confusion_matrix(
             xticklabels = ['normal', 'tumor'],
             yticklabels = ['normal', 'tumor'],
             cbar = False,
-            ax = ax
+            ax = ax,
+            annot_kws = {'fontsize': annot_fontsize}
         )
-        ax.set_title(f'{tid}')
-        ax.set_xlabel('Predicted')
-        ax.set_ylabel('True')
+        ax.set_title(f'{tid}', fontsize = title_fontsize, pad = 8)
+        ax.set_xlabel('Predicted', fontsize = label_fontsize)
+        ax.set_ylabel('True', fontsize = label_fontsize)
+        ax.tick_params(labelsize = label_fontsize)
 
     plt.tight_layout()
     fig.savefig(out_fig_fn, dpi = fig_dpi, bbox_inches = 'tight')
@@ -815,31 +831,51 @@ def plot_labels_hist(
     if verbose:
         info("plot histogram for each tool's labels ...")
 
+    # Publication-ready styling
+    title_fontsize = 10
+    label_fontsize = 9
+    tick_fontsize = 8
+    legend_fontsize = 8
+    percent_fontsize = 7
+    
+    # Use more publication-ready colors (muted, professional)
+    normal_color = '#4A90E2'  # Muted blue
+    tumor_color = '#E24A4A'   # Muted red
+    
     fig, ax = plt.subplots(figsize = (fig_width, fig_height))
     bar_width = 0.35
     pos = np.arange(len(tool_list))
 
-    ax.bar(pos - bar_width/2, normal_counts, bar_width,
-            label = 'normal', color = '#1f77b4')
-    ax.bar(pos + bar_width/2, tumor_counts, bar_width,
-            label = 'tumor', color = '#ff7f0e')
+    bars1 = ax.bar(pos - bar_width/2, normal_counts, bar_width,
+            label = 'normal', color = normal_color, edgecolor = 'white', linewidth = 0.5)
+    bars2 = ax.bar(pos + bar_width/2, tumor_counts, bar_width,
+            label = 'tumor', color = tumor_color, edgecolor = 'white', linewidth = 0.5)
 
     ax.set_xticks(pos)
-    ax.set_xticklabels([tool.tid for tool in tool_list])
-    ax.set_ylabel('Count')
-    ax.set_title('Predicted Label Distribution')
-    ax.legend()
+    ax.set_xticklabels([tool.tid for tool in tool_list], fontsize = tick_fontsize, rotation = 45, ha = 'right')
+    ax.set_ylabel('Count', fontsize = label_fontsize)
+    ax.set_title('Predicted Label Distribution', fontsize = title_fontsize, pad = 10)
+    ax.tick_params(axis = 'y', labelsize = tick_fontsize)
+    
+    # Compact legend
+    ax.legend(fontsize = legend_fontsize, frameon = True, fancybox = False, 
+              edgecolor = 'gray', framealpha = 0.9, loc = 'upper left')
 
 
-    # percentages on top of bars
+    # percentages on top of bars with better spacing
     total = len(df)
-    fongsize = 9
+    max_height = max(max(normal_counts), max(tumor_counts))
+    text_offset = max_height * 0.02
+    
     for i, (n, t) in enumerate(zip(normal_counts, tumor_counts)):
-        ax.text(i-bar_width/2, n+total*0.01, f'{n/total:.1%}',
-                ha = 'center', va = 'bottom', fontsize = fongsize)
-        ax.text(i+bar_width/2, t+total*0.01, f'{t/total:.1%}',
-                ha = 'center', va = 'bottom', fontsize = fongsize)
+        if n > 0:
+            ax.text(i - bar_width/2, n + text_offset, f'{n/total:.1%}',
+                    ha = 'center', va = 'bottom', fontsize = percent_fontsize)
+        if t > 0:
+            ax.text(i + bar_width/2, t + text_offset, f'{t/total:.1%}',
+                    ha = 'center', va = 'bottom', fontsize = percent_fontsize)
 
+    plt.tight_layout()
     fig.savefig(out_fig_fn, dpi = fig_dpi, bbox_inches = 'tight')
     plt.close(fig)
 
@@ -908,6 +944,15 @@ def plot_metrics_bar(
     else:
         axes = axes.flatten()
 
+    # Publication-ready styling
+    title_fontsize = 10
+    label_fontsize = 9
+    tick_fontsize = 8
+    value_fontsize = 8
+    
+    # Use more publication-ready color (muted blue-gray)
+    bar_color = '#5B9BD5'  # Professional blue
+    
     bar_width = 0.6
     pos       = np.arange(len(tid_list))
 
@@ -919,22 +964,30 @@ def plot_metrics_bar(
             assert len(v) == 1
             values.append(v[0])
         bars = ax.bar(pos, values, bar_width,
-                      color = '#1f77b4', edgecolor = 'black')
-        ax.set_title(metric, fontsize = 12)
+                      color = bar_color, edgecolor = 'white', linewidth = 0.5)
+        
+        # Move title up to avoid overlap with values near 1.0
+        ax.set_title(metric, fontsize = title_fontsize, pad = 15)
         ax.set_xticks(pos)
-        ax.set_xticklabels(tid_list, rotation = 45, ha = 'right')
-        ax.set_ylim(0, 1)
+        ax.set_xticklabels(tid_list, rotation = 45, ha = 'right', fontsize = tick_fontsize)
+        ax.set_ylim(0, 1.05)  # Slight extra space at top
+        ax.tick_params(axis = 'y', labelsize = tick_fontsize)
 
-        # show value on top of each bar
+        # show value on top of each bar with better positioning
         for bar, val in zip(bars, values):
+            # Adjust text position based on value to avoid title overlap
+            text_y = bar.get_height() + 0.015
+            if val > 0.95:
+                text_y = bar.get_height() - 0.03  # Put inside bar if too high
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.02,
+                text_y,
                 f'{val:.3f}',
-                ha = 'center', va = 'bottom', fontsize = 9
+                ha = 'center', va = 'bottom' if val <= 0.95 else 'top',
+                fontsize = value_fontsize
             )
 
-    fig.supylabel('Score', fontsize = 12)
+    fig.supylabel('Score', fontsize = label_fontsize)
     plt.tight_layout(rect = [0, 0, 1, 0.95])
     fig.savefig(out_fig_fn, dpi = fig_dpi, bbox_inches = 'tight')
     plt.close(fig)
@@ -992,30 +1045,91 @@ def plot_metrics_radar(
     ).tolist()
     angles += angles[:1]      # close circle
 
+    # Publication-ready styling
+    title_fontsize = 11
+    label_fontsize = 9
+    tick_fontsize = 8
+    legend_fontsize = 8
+    
+    # Color palette for multiple tools (colorblind-friendly)
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    
+    # Line styles to differentiate overlapping tools
+    line_styles = ['-', '--', '-.', ':', '-', '--', '-.', ':', '-', '--']
+    markers = ['o', 's', '^', 'D', 'v', 'p', '*', 'h', 'X', 'P']
+
     fig, ax = plt.subplots(
         figsize = (fig_width, fig_height),
         subplot_kw = dict(polar = True)
     )
+    
+    # Collect all tool values to detect overlaps
+    tool_values_dict = {}
     for tid in tid_list:
-        if verbose:
-            info("process %s ..." % tid)
-
         values = []
         for m in metric_list:
             v = df.loc[(df[tid_col] == tid) & (df[metric_col] == m), value_col]
             v = v.to_numpy()
             assert len(v) == 1
             values.append(v[0])
+        tool_values_dict[tid] = values
+    
+    # Detect tools with identical metrics (overlapping)
+    value_tuples = {tid: tuple(vals) for tid, vals in tool_values_dict.items()}
+    value_to_tools = {}
+    for tid, val_tuple in value_tuples.items():
+        if val_tuple not in value_to_tools:
+            value_to_tools[val_tuple] = []
+        value_to_tools[val_tuple].append(tid)
+    
+    # Plot tools, using different styles for overlapping ones
+    tool_idx = 0
+    for tid in tid_list:
+        if verbose:
+            info("process %s ..." % tid)
+
+        values = tool_values_dict[tid]
         values += values[:1]
-        ax.plot(angles, values, 'o-', linewidth = linewidth, label = tid)
-        ax.fill(angles, values, alpha = alpha)
+        
+        # Check if this tool overlaps with others
+        val_tuple = value_tuples[tid]
+        overlapping_tools = value_to_tools[val_tuple]
+        is_overlapping = len(overlapping_tools) > 1
+        
+        # Use different line style and marker if overlapping to differentiate
+        # For overlapping tools, cycle through styles; for unique tools, use solid line
+        if is_overlapping:
+            overlap_idx = overlapping_tools.index(tid)
+            ls = line_styles[overlap_idx % len(line_styles)]
+            marker = markers[overlap_idx % len(markers)]
+            # Use slightly different alpha for overlapping fills
+            fill_alpha = alpha * (0.7 + 0.3 * (overlap_idx % 2))
+        else:
+            ls = '-'
+            marker = 'o'
+            fill_alpha = alpha
+        
+        color = colors[tool_idx % len(colors)]
+        
+        ax.plot(angles, values, marker = marker, linestyle = ls, 
+                linewidth = linewidth, label = tid, color = color, 
+                markersize = 5)
+        ax.fill(angles, values, alpha = fill_alpha, color = color)
+
+        tool_idx += 1
 
     ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(metric_list)
+    ax.set_xticklabels(metric_list, fontsize = tick_fontsize)
     ax.set_ylim(0, 1)
+    ax.tick_params(labelsize = tick_fontsize)
+    
     if title is not None:
-        ax.set_title(title, size = 16, pad = 20)
-    ax.legend(loc = 'upper right', bbox_to_anchor = (1.3, 1.0))
+        ax.set_title(title, size = title_fontsize, pad = 20)
+    
+    ax.legend(loc = 'upper right', bbox_to_anchor = (1.3, 1.0), 
+              fontsize = legend_fontsize, frameon = True, fancybox = False,
+              edgecolor = 'gray', framealpha = 0.9)
 
     plt.tight_layout()
     fig.savefig(out_fig_fn, dpi = fig_dpi, bbox_inches = 'tight')
