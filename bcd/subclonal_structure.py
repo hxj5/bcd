@@ -1048,7 +1048,7 @@ def extract_clonal_labels(
     
     # Print summary
     info(f"Processed {n_cells} cells after filtering.")
-    info("In total %d clones." % len(labels_new))
+    info("In total %d clones." % len(label_new))
     
     return(out_fn)
 
