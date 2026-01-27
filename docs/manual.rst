@@ -594,18 +594,32 @@ An example is:
 
 .. code-block:: python
 
-    from bcd.subclonal_structure import subclonal_structure_main, InferCNV, Numbat
+    from bcd.subclonal_structure import (
+        subclonal_structure_main,
+        CalicoST,
+        CopyKAT,
+        InferCNV,
+        Numbat,
+        XClone
+    )
 
-    infercnv = InferCNV(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
-    numbat = Numbat(clone_post_fn = "./numbat/clone_post_2.tsv")
+    # Define arguments for each tool
+    calicost = CalicoST(clone_label_fn="./calicost/clone_labels.tsv")
+    copykat = CopyKAT(hclust_fn="./copykat/hclust.rds")
+    infercnv = InferCNV(obj_fn="./infercnv/MCMC_inferCNV_obj.rds")
+    numbat = Numbat(clone_post_fn="./numbat/clone_post_2.tsv")
+    xclone = XClone(clone_post_fn="./xclone/HCC3_select_ref_cell_clone_posteriors.tsv")
 
+    # Run subclonal structure identification
     ret, res = subclonal_structure_main(
-        sid = "test",
-        tool_list = [infercnv, numbat],
-        out_dir = "./out",
-        truth_fn = "./data/truth.tsv",
-        n_cluster = 2,
-        verbose = True
+        sid="test",
+        tool_list=[calicost, copykat, infercnv, numbat, xclone],
+        out_dir="./out",
+        truth_fn="./data/truth.tsv",
+        n_cluster=3,  # Number of clusters for tools that need clustering (CopyKAT, InferCNV)
+        overlap_how="isec",
+        fig_dpi=300,
+        verbose=True
     )
     
     print("return code = %d" % ret)
@@ -673,9 +687,61 @@ verbose : bool, default True
 
 Input
 ^^^^^
-The inputs to the pipeline include:
+The pipeline requires the following inputs:
 
-TO BE ADDED ...
+1. **Tool-specific files**: Predictions/outputs from each tool in the ``tool_list``.
+
+2. **Ground truth file** (``truth_fn``): A header-free TSV file with two columns:
+   
+   - ``barcode``: Cell barcode/ID
+   - ``annotation``: Clone/subclone label (any string labels)
+   
+   Example:
+   
+   .. code-block:: text
+   
+       AAACCCAAGAAACTG  clone1
+       AAACCCAAGAAACTG  clone2
+       AAACCCAAGAAACTT  clone1
+       AAACCCAAGAAACTT  clone3
+       ...
+
+Tool-specific input files are described below:
+
+**CalicoST**
+    - Input: TSV file (``clone_label_fn``) with columns: ``BARCODES`` and ``clone_label``
+    - Format: Tab-delimited file
+    - Output: Extracts clone labels and maps them to numeric predictions
+    - Notes: Rows with empty ``clone_label`` values are filtered out
+
+**CopyKAT**
+    - Input: RDS file (``hclust_fn``) containing CopyKAT hierarchical clustering results
+    - Format: R object storing hclust tree
+    - Output: Uses ``cutree()`` to cut the tree into ``k`` clusters
+    - Notes: Requires ``n_cluster`` parameter to specify number of clusters
+
+**InferCNV**
+    - Input: RDS file (``obj_fn``) storing the inferCNV object (typically ``MCMC_inferCNV_obj.rds``)
+    - Format: R inferCNV object with hierarchical clustering stored in ``obj@tumor_subclusters$hc``
+    - Output: Cuts existing hierarchical clustering trees into ``k`` clusters per group
+    - Notes: 
+      - Requires ``n_cluster`` parameter to specify number of clusters per group
+      - Must have run ``infercnv::run(analysis_mode='subclusters')`` to generate clustering
+      - Processes each group separately and combines results
+
+**Numbat**
+    - Input: TSV file (``clone_post_fn``) with columns: ``cell`` and ``clone_opt``
+    - Format: Tab-delimited file
+    - Output: Extracts clone labels from ``clone_opt`` column
+    - Notes: Rows with empty ``clone_opt`` values are filtered out
+
+**XClone**
+    - Input: TSV file (``clone_post_fn``) with columns: ``cell_barcode`` and ``clone_id_refined``
+    - Format: Tab-delimited file
+    - Output: Extracts clone labels from ``clone_id_refined`` column
+    - Notes: 
+      - Barcode column defaults to ``cell_barcode`` but can auto-detect alternatives (``cell``, ``barcode``, etc.)
+      - Rows with empty ``clone_id_refined`` values are filtered out
 
 
 
@@ -683,7 +749,61 @@ TO BE ADDED ...
 
 Output
 ^^^^^^
-TO BE ADDED ...
+The pipeline generates outputs organized in the following directory structure:
+
+.. code-block:: text
+
+    out_dir/
+    ├── 0_pp/                           # Preprocessing
+    │   ├── <tool_id>/
+    │   │   └── <tool_id>_predictions.tsv
+    │   └── truth/
+    │       └── truth.tsv
+    ├── 1_overlap/                      # Cell overlap analysis
+    │   ├── overlap.tools.intersect.cells.tsv
+    │   ├── overlap.tools_and_truth.intersect.cells.tsv
+    │   ├── overlap.<tool_id>.tsv       # Per-tool subset (1 per tool)
+    │   └── overlap.truth.tsv
+    ├── 2_metric/
+    │   └── metrics.tsv                 # Evaluation metrics
+    └── 3_plot/
+        ├── <sample_id>.labels.confusion_matrix.jpg
+        └── <sample_id>.metrics.bar.jpg
+
+**Output File Descriptions**
+
+``<tool_id>_predictions.tsv``
+    Preprocessed predictions for each tool. Columns:
+    
+    - ``barcode``: Cell barcode
+    - ``prediction``: Numeric clone ID (0, 1, 2, ...)
+    - ``clone_label`` (or ``cluster_id``): Original clone label from tool
+
+``truth.tsv``
+    Formatted ground truth labels. Columns:
+    
+    - ``barcode``: Cell barcode
+    - ``annotation``: Numeric clone ID (mapped from original labels)
+    - ``annotation_old``: Original clone label
+
+``metrics.tsv``
+    Performance metrics for each tool. Columns:
+    
+    - ``tool``: Tool name
+    - ``metric``: Metric type (currently only ``ARI``)
+    - ``value``: Metric value (0-1 range for ARI)
+
+``overlap.<tool_id>.tsv``
+    Subset of each tool's predictions, including only cells present in all tools and ground truth.
+    Columns: ``barcode``, ``prediction``, plus tool-specific columns (e.g., ``clone_label``).
+
+``overlap.truth.tsv``
+    Ground truth labels for overlapping cells.
+
+**Visualization Files**
+
+- ``labels.confusion_matrix.jpg``: Confusion matrices for all tools in a grid layout, showing predicted vs. true clone assignments
+- ``metrics.bar.jpg``: Bar plots of ARI (Adjusted Rand Index) for each tool
 
 
 
@@ -691,4 +811,49 @@ TO BE ADDED ...
 
 Implementation
 ^^^^^^^^^^^^^^
-TO BE ADDED ...
+The pipeline evaluates the performance of tools in identifying subclonal structures from single-cell and spatial transcriptomics data, using the Adjusted Rand Index (ARI) metric.
+
+It mainly includes four steps, each wrapped in one module:
+
+1. **Preprocessing** (Stage 0)
+   
+   - Each tool is processed to extract clone/subclone predictions
+   - Outputs are standardized to TSV format with columns: ``barcode``, ``prediction``, and original label
+   - Tool-specific processing:
+   
+     - **CalicoST**: Extracts ``clone_label`` column, filters empty values, maps to numeric IDs
+     - **CopyKAT**: Uses ``cutree()`` on hierarchical clustering tree with ``k`` clusters
+     - **InferCNV**: Cuts existing hierarchical clustering trees (from ``obj@tumor_subclusters$hc``) into ``k`` clusters per group, then combines results
+     - **Numbat**: Extracts ``clone_opt`` column, filters empty values, maps to numeric IDs
+     - **XClone**: Extracts ``clone_id_refined`` column, filters empty values, maps to numeric IDs
+   
+   - Ground truth is formatted: original labels are mapped to numeric IDs (0, 1, 2, ...)
+
+2. **Cell Overlap Analysis** (Stage 1)
+   
+   - Identifies cells present in ALL tools and ground truth
+   - Generates intersection lists for quality control:
+     - ``overlap.tools.intersect.cells.tsv``: Cells present in all tools
+     - ``overlap.tools_and_truth.intersect.cells.tsv``: Cells present in all tools AND ground truth
+   - Subsets all prediction files to contain only overlapping cells
+   - Ensures fair comparison across all tools
+
+3. **Metrics Calculation** (Stage 2)
+   
+   - Calculates **ARI** (Adjusted Rand Index) for each tool:
+     - Measures similarity between predicted and true clone assignments
+     - Range: -1 to 1, where 1 indicates perfect agreement
+     - Accounts for chance agreement
+
+4. **Visualization** (Stage 3)
+   
+   - **Confusion matrices**: Shows predicted vs. true clone assignments for each tool in a grid layout
+   - **Bar plots**: ARI scores for each tool, with values displayed on top of bars
+
+**Key Features**
+
+- **Standardized input format**: All tools output predictions to TSV with ``barcode`` and ``prediction`` columns
+- **Cell overlap tracking**: Ensures valid comparisons by using common cell set
+- **Flexible clustering**: Tools that don't output clone labels can use hierarchical clustering with specified ``k``
+- **Group-aware processing**: InferCNV processes multiple groups separately and combines results
+- **Automated visualization**: Generates publication-quality figures for performance comparison

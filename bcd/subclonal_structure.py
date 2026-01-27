@@ -859,8 +859,6 @@ def run_predict(
             out_fn = tool.predict(
                 res_dir,
                 k = k,
-                dist = 'euclidean',
-                hclust = 'ward.D2',
                 verbose = verbose
             )
 
@@ -871,7 +869,10 @@ def run_predict(
             )
                 
         elif tid == "xclone":
-            pass
+            tool.predict(
+                out_fn = out_fn,
+                verbose = verbose     
+            )
         
         else:
             raise ValueError(f"Error: unknown tool id '{tid}'.")
@@ -1163,25 +1164,23 @@ class InferCNV(Tool):
         self,
         out_dir,
         k,
-        dist = 'euclidean',
-        hclust = 'ward.D2',
         verbose = False
     ):
         os.makedirs(out_dir, exist_ok = True)
         out_fn = os.path.join(out_dir, "%s_predictions.tsv" % self.tid.lower())
-        res = predict_subclones_from_expression(
+        res = predict_subclones_from_hclust(
             obj_fn = self.obj_fn,
             out_fn = out_fn,
             k = k,
             tmp_dir = os.path.join(out_dir, "r2py"),
-            dist = dist,
-            hclust = hclust,
             verbose = verbose
         )
         return out_fn
 
 
 
+# UNUSED: Original function that performs clustering from expression data.
+# Kept for reference but not used. Use predict_subclones_from_hclust instead.
 def predict_subclones_from_expression(
     obj_fn,
     out_fn,
@@ -1231,6 +1230,95 @@ def predict_subclones_from_expression(
     # run the R script.
     if verbose:
         info("run the R script to predict subclones from expression ...")
+    exe_cmdline("Rscript %s" % script_fn)
+    
+    
+    # Save to TSV
+    info(f"Processed predictions saved to '{out_fn}'.")
+
+
+    # Print summary
+    df = pd.read_csv(out_fn, sep = '\t')
+    labels = np.unique(df['prediction'])
+    n_cells = len(df)
+    info(f"Processed {n_cells} cells after filtering.")
+    info("In total %d clones." % len(labels))
+    
+    return(out_fn)
+
+
+
+def predict_subclones_from_hclust(
+    obj_fn,
+    out_fn,
+    k,
+    tmp_dir,
+    verbose = False
+):
+    # Check args.
+    assert_e(obj_fn)
+    os.makedirs(tmp_dir, exist_ok = True)
+    
+    
+    # Perform subclone identification using existing hierarchical clustering.
+    s  = ""
+    s += '''# Cut inferCNV hierarchical trees into a specified number of clusters\n'''
+    s += '''\n'''
+    s += '''obj <- readRDS("%s")\n''' % obj_fn
+    s += '''\n'''
+    s += '''# Check if clustering data exists\n'''
+    s += '''if (is.null(obj@tumor_subclusters$hc)) {\n'''
+    s += '''    stop("No hierarchical clustering found. Ensure you ran infercnv::run(analysis_mode='subclusters').")\n'''
+    s += '''}\n'''
+    s += '''\n'''
+    s += '''# Iterate through each group (sample/patient) and cut the tree\n'''
+    s += '''all_clusters_list <- lapply(names(obj@tumor_subclusters$hc), function(group_name) {\n'''
+    s += '''    \n'''
+    s += '''    hc_tree <- obj@tumor_subclusters$hc[[group_name]]\n'''
+    s += '''    \n'''
+    s += '''    # Perform cuttree\n'''
+    s += '''    cuts <- cutree(hc_tree, k = %d)\n''' % k
+    s += '''    \n'''
+    s += '''    # Create data frame for this group\n'''
+    s += '''    data.frame(\n'''
+    s += '''        cell_barcode = names(cuts),\n'''
+    s += '''        group_id = group_name,\n'''
+    s += '''        cluster_id = paste0(group_name, "_c", cuts),\n'''
+    s += '''        stringsAsFactors = FALSE\n'''
+    s += '''    )\n'''
+    s += '''})\n'''
+    s += '''\n'''
+    s += '''# Combine results from all groups into one data frame\n'''
+    s += '''final_df <- do.call(rbind, all_clusters_list)\n'''
+    s += '''\n'''
+    s += '''# Map cluster_id to numeric predictions\n'''
+    s += '''unique_clusters <- unique(final_df$cluster_id)\n'''
+    s += '''cluster_map <- setNames(0:(length(unique_clusters) - 1), unique_clusters)\n'''
+    s += '''final_df$prediction <- cluster_map[final_df$cluster_id]\n'''
+    s += '''\n'''
+    s += '''# Format barcode (replace dots with dashes)\n'''
+    s += '''final_df$barcode <- gsub(".", "-", final_df$cell_barcode, fixed = TRUE)\n'''
+    s += '''\n'''
+    s += '''# Select and reorder columns\n'''
+    s += '''df <- final_df[, c("barcode", "prediction", "cluster_id")]\n'''
+    s += '''\n'''
+    s += '''write.table(\n'''
+    s += '''    df,\n'''
+    s += '''    file = "%s",\n''' % out_fn
+    s += '''    sep = "\\t",\n'''
+    s += '''    row.names = FALSE,\n'''
+    s += '''    col.names = TRUE\n'''
+    s += ''')\n'''
+    s += '''\n'''
+    
+    script_fn = os.path.join(tmp_dir, "predict_subclones_from_hclust.R")
+    with open(script_fn, "w") as fp:
+        fp.write(s)
+
+
+    # run the R script.
+    if verbose:
+        info("run the R script to predict subclones from hierarchical clustering ...")
     exe_cmdline("Rscript %s" % script_fn)
     
     
@@ -1433,6 +1521,105 @@ def extract_clone_labels(
 ####################################################
 #------------------ tools.xclone ------------------#
 ####################################################
+
+class XClone(Tool):
+    def __init__(self, clone_post_fn):
+        """XClone object.
+        
+        Parameters
+        ----------
+        clone_post_fn : str
+            Path to XClone TSV file with columns including 'cell_barcode' and 
+            'clone_id_refined'.
+        """
+        super().__init__(tid = "XClone")
+        self.clone_post_fn = clone_post_fn
+        
+
+    def predict(self, out_fn, verbose = False):
+        """Predict subclonal structure from XClone output.
+
+        Saves a TSV file with columns: `barcode`, `prediction`
+        to out_dir/xclone_predictions.tsv.
+        """
+        return extract_xclone_labels(
+            clone_post_fn = self.clone_post_fn,
+            out_fn = out_fn,
+            barcode_col = 'cell_barcode',
+            clone_col = 'clone_id_refined',
+            delimiter = '\t',
+            verbose = verbose
+        )
+
+
+
+def extract_xclone_labels(
+    clone_post_fn,
+    out_fn,
+    barcode_col = 'cell_barcode',
+    clone_col = 'clone_id_refined',
+    delimiter = '\t',
+    verbose = False
+):
+    # Check args.
+    assert_e(clone_post_fn)
+
+    df = pd.read_csv(clone_post_fn, delimiter = delimiter)
+    
+    # Try to find barcode column if default doesn't exist
+    if barcode_col not in df.columns:
+        # Try common alternatives
+        for alt_col in ['cell_barcode', 'cell', 'Cell', 'CELL', 'barcode', 'Barcode', 'BARCODE']:
+            if alt_col in df.columns:
+                barcode_col = alt_col
+                if verbose:
+                    info(f"Using '{barcode_col}' as barcode column.")
+                break
+        else:
+            raise ValueError(f"TSV must contain a barcode column. Found columns: {list(df.columns)}")
+    
+    required_cols = [barcode_col, clone_col]
+    if not all(col in df.columns for col in required_cols):
+        raise ValueError(f"TSV must contain columns: {required_cols}. Found columns: {list(df.columns)}")
+
+
+    # Filter out rows with empty clone labels.
+    initial_n_cells = len(df)
+    df = df.dropna(subset = [clone_col])
+    n_cells = len(df)
+    n_removed = initial_n_cells - n_cells
+    if n_removed > 0:
+        warn("Removed %d cells with empty '%s' values." %  \
+            (n_removed, clone_col))
+    if n_cells == 0:
+        error("No cells remain after removing empty '%s' values." % clone_col)
+        raise ValueError
+
+
+    # Format labels.
+    labels_old = np.unique(df[clone_col])
+    label_new = np.arange(len(labels_old))
+    label_map = {o:n for o, n in zip(labels_old, label_new)}
+
+
+    # Save to TSV
+    result_df = pd.DataFrame({
+        'barcode': df[barcode_col].to_numpy(),
+        'prediction': df[clone_col].map(label_map),
+        'clone_label': df[clone_col]
+    })
+    result_df.to_csv(out_fn, sep = '\t', index = False)
+    info(f"Predictions saved to {out_fn}.")
+
+
+    # Print summary
+    df = pd.read_csv(out_fn, sep = '\t')
+    labels = np.unique(df['prediction'])
+    n_cells = len(df)
+    info(f"Processed {n_cells} cells after filtering.")
+    info("In total %d clones." % len(labels))
+
+    return(out_fn)
 
 
 
