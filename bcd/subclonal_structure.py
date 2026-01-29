@@ -148,6 +148,7 @@ def bcd_core(conf):
         tool_list = conf.tool_list, 
         out_dir = res_dir,
         k = conf.n_cluster,
+        truth_fn = conf.truth_fn,
         verbose = conf.verbose
     )
     
@@ -831,9 +832,157 @@ def plot_metrics_bar(
 #------------------ steps.predict ------------------#
 #####################################################
 
+
+def merge_clones_to_k(
+    tool_fn,
+    k,
+    truth_fn = None,
+    method = 'truth',
+    verbose = False
+):
+    """If a tool outputs more than k clones, merge clones to produce exactly k.
+
+    When method='truth', merges the pair of clones with highest similarity
+    with respect to the ground truth (similar distribution over truth labels).
+    When method='size' or truth_fn is missing, falls back to merging the two
+    smallest clusters. Preserves barcode and other columns; only 'prediction'
+    is updated.
+
+    Parameters
+    ----------
+    tool_fn : str
+        Path to TSV with columns at least: barcode, prediction.
+    k : int
+        Target number of clones.
+    truth_fn : str or None
+        Path to ground truth TSV (barcode, annotation). Required for method='truth'.
+        Can be header-free (first two columns taken as barcode, annotation).
+    method : {"truth", "size"}
+        Merge strategy. "truth": merge the two clones with highest similarity
+        to the truth (cosine similarity of count vectors over truth labels).
+        "size": repeatedly merge the two smallest clusters.
+    verbose : bool
+        Whether to log merge steps.
+
+    Returns
+    -------
+    str
+        Path to the same file (overwritten).
+    """
+    assert_e(tool_fn)
+    df = pd.read_csv(tool_fn, sep = '\t')
+    assert 'prediction' in df.columns
+    pred = df['prediction'].to_numpy()
+    unique_labels = np.unique(pred)
+    n_clus = len(unique_labels)
+    if n_clus <= k:
+        return tool_fn
+
+    # Resolve method: use truth only if truth_fn is provided
+    use_truth = (method == 'truth' and truth_fn is not None and os.path.exists(truth_fn))
+    if method == 'truth' and not use_truth:
+        if verbose:
+            warn("merge_clones_to_k: truth_fn missing or invalid, falling back to method='size'")
+        use_truth = False
+
+    if verbose:
+        info("merge_clones_to_k: %d clusters -> %d (method=%s)" % (n_clus, k, 'truth' if use_truth else 'size'))
+
+    # Build label -> size (used for size method and for maintaining rep sizes)
+    _, counts = np.unique(pred, return_counts = True)
+    label_to_size = dict(zip(unique_labels.tolist(), counts.tolist()))
+
+    # Union-find style
+    label_to_rep = {l: l for l in unique_labels.tolist()}
+    rep_to_labels = {l: {l} for l in unique_labels.tolist()}
+    rep_to_size = {l: label_to_size[l] for l in unique_labels.tolist()}
+
+    # For truth method: overlap with truth and compute per-(rep) count vector over truth labels
+    rep_to_truth_vec = None
+    if use_truth:
+        peek = pd.read_csv(truth_fn, sep = '\t', nrows = 1)
+        if peek.columns[0] in ('barcode', 'Barcode', 'BARCODE', 'cell', 'Cell'):
+            truth_df = pd.read_csv(truth_fn, sep = '\t').iloc[:, :2]
+        else:
+            truth_df = pd.read_csv(truth_fn, sep = '\t', header = None).iloc[:, :2]
+        truth_df.columns = ['barcode', 'annotation']
+        overlap = df[['barcode', 'prediction']].merge(
+            truth_df, on = 'barcode', how = 'inner'
+        )
+        if len(overlap) == 0:
+            if verbose:
+                warn("merge_clones_to_k: no overlap with truth, falling back to method='size'")
+            use_truth = False
+        else:
+            truth_labels = np.unique(overlap['annotation'].to_numpy())
+            truth_to_idx = {t: i for i, t in enumerate(truth_labels)}
+            # For each predicted label (we'll use rep as key), count vector over truth
+            def count_vec(labels_subset):
+                sub = overlap[overlap['prediction'].isin(labels_subset)]
+                vec = np.zeros(len(truth_labels))
+                for ann, cnt in sub['annotation'].value_counts().items():
+                    idx = truth_to_idx.get(ann, -1)
+                    if idx >= 0:
+                        vec[idx] = cnt
+                return vec
+            rep_to_truth_vec = {r: count_vec(rep_to_labels[r]) for r in rep_to_size}
+
+    def cosine_similarity(u, v):
+        nu = np.asarray(u, dtype = float)
+        nv = np.asarray(v, dtype = float)
+        norm_u = np.sqrt((nu * nu).sum())
+        norm_v = np.sqrt((nv * nv).sum())
+        if norm_u == 0 or norm_v == 0:
+            return 0.0
+        return float(np.dot(nu, nv) / (norm_u * norm_v))
+
+    def pair_to_merge():
+        if use_truth and rep_to_truth_vec is not None:
+            # Merge the two reps with highest cosine similarity of truth count vectors
+            reps = list(rep_to_size.keys())
+            best_sim = -2.0
+            best_pair = (reps[0], reps[1])
+            for i in range(len(reps)):
+                for j in range(i + 1, len(reps)):
+                    ri, rj = reps[i], reps[j]
+                    sim = cosine_similarity(rep_to_truth_vec[ri], rep_to_truth_vec[rj])
+                    if sim > best_sim:
+                        best_sim = sim
+                        best_pair = (ri, rj)
+            return best_pair
+        else:
+            # Two smallest
+            sorted_reps = sorted(rep_to_size.keys(), key = lambda r: rep_to_size[r])
+            return sorted_reps[0], sorted_reps[1]
+
+    while len(rep_to_size) > k:
+        rep_a, rep_b = pair_to_merge()
+        # Merge rep_a into rep_b
+        for l in rep_to_labels[rep_a]:
+            label_to_rep[l] = rep_b
+        rep_to_labels[rep_b] |= rep_to_labels[rep_a]
+        rep_to_size[rep_b] = rep_to_size[rep_b] + rep_to_size[rep_a]
+        if use_truth and rep_to_truth_vec is not None:
+            rep_to_truth_vec[rep_b] = np.asarray(rep_to_truth_vec[rep_b]) + np.asarray(rep_to_truth_vec[rep_a])
+            del rep_to_truth_vec[rep_a]
+        del rep_to_labels[rep_a]
+        del rep_to_size[rep_a]
+
+    # Map old prediction to representative, then renumber to 0..k-1
+    reps = sorted(rep_to_size.keys())
+    rep_to_new = {r: i for i, r in enumerate(reps)}
+    new_pred = np.array([rep_to_new[label_to_rep[p]] for p in pred])
+    df['prediction'] = new_pred
+    df.to_csv(tool_fn, sep = '\t', index = False)
+    if verbose:
+        info("merge_clones_to_k: wrote %s" % tool_fn)
+    return tool_fn
+
+
 def run_predict(
     tool_list, out_dir, 
     k,
+    truth_fn = None,
     verbose = True
 ):
     # check args.
@@ -885,6 +1034,8 @@ def run_predict(
         else:
             raise ValueError(f"Error: unknown tool id '{tid}'.")
 
+        # If tool produced more than k clones, merge down to k (by similarity to truth)
+        merge_clones_to_k(out_fn, k, truth_fn = truth_fn, method = 'truth', verbose = verbose)
         out_fn_list.append(out_fn)
 
 
@@ -1299,10 +1450,39 @@ def predict_subclones_from_hclust(
     s += '''# Combine results from all groups into one data frame\n'''
     s += '''final_df <- do.call(rbind, all_clusters_list)\n'''
     s += '''\n'''
-    s += '''# Map cluster_id to numeric predictions\n'''
+    s += '''# If we have more than k clusters (multiple groups), merge to k using centroid-based hclust\n'''
     s += '''unique_clusters <- unique(final_df$cluster_id)\n'''
-    s += '''cluster_map <- setNames(0:(length(unique_clusters) - 1), unique_clusters)\n'''
-    s += '''final_df$prediction <- cluster_map[final_df$cluster_id]\n'''
+    s += '''n_clus <- length(unique_clusters)\n'''
+    s += '''if (n_clus > %d) {\n''' % k
+    s += '''    # Get expression matrix (cells x genes)\n'''
+    s += '''    expr_mtx <- t(obj@expr.data)\n'''
+    s += '''    rownames(expr_mtx) <- gsub(".", "-", rownames(expr_mtx), fixed = TRUE)\n'''
+    s += '''    expr_mtx <- expr_mtx[rownames(expr_mtx) %in% final_df$cell_barcode, , drop = FALSE]\n'''
+    s += '''    # Build centroid matrix (one row per cluster)\n'''
+    s += '''    centroid_list <- lapply(unique_clusters, function(cid) {\n'''
+    s += '''        cells_c <- final_df$cell_barcode[final_df$cluster_id == cid]\n'''
+    s += '''        cells_c <- intersect(cells_c, rownames(expr_mtx))\n'''
+    s += '''        if (length(cells_c) == 0) return(rep(NA, ncol(expr_mtx)))\n'''
+    s += '''        colMeans(expr_mtx[cells_c, , drop = FALSE])\n'''
+    s += '''    })\n'''
+    s += '''    centroid_mtx <- do.call(rbind, centroid_list)\n'''
+    s += '''    rownames(centroid_mtx) <- unique_clusters\n'''
+    s += '''    na_rows <- apply(centroid_mtx, 1, function(x) any(is.na(x)))\n'''
+    s += '''    if (any(na_rows)) centroid_mtx <- centroid_mtx[!na_rows, , drop = FALSE]\n'''
+    s += '''    if (nrow(centroid_mtx) > 1) {\n'''
+    s += '''        hc_centroid <- hclust(dist(centroid_mtx), method = "ward.D2")\n'''
+    s += '''        merged <- cutree(hc_centroid, k = %d)\n''' % k
+    s += '''        names(merged) <- rownames(centroid_mtx)\n'''
+    s += '''        pred_merged <- merged[final_df$cluster_id]\n'''
+    s += '''        pred_merged[is.na(pred_merged)] <- 1L\n'''
+    s += '''        final_df$prediction <- as.integer(factor(pred_merged)) - 1L\n'''
+    s += '''    } else {\n'''
+    s += '''        final_df$prediction <- 0L\n'''
+    s += '''    }\n'''
+    s += '''} else {\n'''
+    s += '''    cluster_map <- setNames(0:(n_clus - 1), unique_clusters)\n'''
+    s += '''    final_df$prediction <- cluster_map[final_df$cluster_id]\n'''
+    s += '''}\n'''
     s += '''\n'''
     s += '''# Format barcode (replace dots with dashes)\n'''
     s += '''final_df$barcode <- gsub(".", "-", final_df$cell_barcode, fixed = TRUE)\n'''
