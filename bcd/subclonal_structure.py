@@ -214,7 +214,7 @@ class Config:
         s =  "%s\n" % prefix
         s += "%ssid = %s\n" % (prefix, self.sid)
         s += "%slen(tool_list) = %d\n" % (prefix, len(self.tool_list))
-        s += "%stid list = '%s'\n" % (prefix, ", ".join([tool.tid for tool in self.tool_list]))
+        s += "%stid list = '%s'\n" % (prefix, ", ".join([tool.display_name() for tool in self.tool_list]))
         s += "%sout_dir = %s\n" % (prefix, self.out_dir)
         s += "%struth_fn = %s\n" % (prefix, self.truth_fn)
         s += "%sn_cluster = %s\n" % (prefix, str(self.n_cluster))
@@ -381,9 +381,9 @@ def run_metric(
     df = pd.read_csv(truth_fn, sep = '\t')
     truth_labels = df['annotation'].to_numpy()
     for i, (tool, tool_fn) in enumerate(zip(tool_list, tool_fn_list)):
-        tid = tool.tid
+        display_name = tool.display_name()
         if verbose:
-            info("process %s ..." % tid)
+            info("process %s ..." % display_name)
         
         df = pd.read_csv(tool_fn, sep = '\t')
         tool_labels = df['prediction'].to_numpy()
@@ -400,7 +400,7 @@ def run_metric(
 
     df_metric = pd.DataFrame(
         data = dict(
-            tool = [tool.tid for tool in tool_list],
+            tool = [tool.display_name() for tool in tool_list],
             ARI = ari_list
         ))
     df_metric = pd.melt(
@@ -446,6 +446,13 @@ def calc_metrics(truth, pred):
 #####################################################
 #------------------ steps.overlap ------------------#
 #####################################################
+
+def _tool_file_id(tool):
+    """Get unique filesystem identifier for tool (for output filenames)."""
+    if tool.run_id is not None and str(tool.run_id).strip() != "":
+        return "%s_%s" % (tool.tid.lower(), str(tool.run_id))
+    return tool.tid.lower()
+
 
 def run_overlap(
     tool_list,
@@ -562,12 +569,12 @@ def overlap_isec_cells(
 
     out_tool_fn_list = []
     for tool, tool_fn in zip(tool_list, tool_fn_list):
-        tid = tool.tid.lower()
+        file_id = _tool_file_id(tool)
         df = pd.read_csv(tool_fn, delimiter = '\t')
         df.index = df['barcode']
         df = df.loc[ovp_cells].copy()
         
-        fn = os.path.join(out_dir, "%s.%s.tsv" % (out_prefix, tid))
+        fn = os.path.join(out_dir, "%s.%s.tsv" % (out_prefix, file_id))
         df.to_csv(fn, sep = '\t', index = False)
         out_tool_fn_list.append(fn)
         
@@ -702,9 +709,9 @@ def plot_labels_confusion_matrix(
     df = pd.read_csv(truth_fn, sep = '\t')
     truth_labels = df['annotation'].to_numpy()
     for ax, tool, tool_fn in zip(axes[:n], tool_list, tool_fn_list):
-        tid = tool.tid
+        display_name = tool.display_name()
         if verbose:
-            info("process %s ..." % tid)
+            info("process %s ..." % display_name)
 
         df = pd.read_csv(tool_fn, sep = '\t')
         tool_labels = df['prediction'].to_numpy()
@@ -716,7 +723,7 @@ def plot_labels_confusion_matrix(
             cbar = False,
             ax = ax
         )
-        ax.set_title(f'{tid}')
+        ax.set_title(f'{display_name}')
         ax.set_xlabel('Predicted')
         ax.set_ylabel('True')
 
@@ -992,11 +999,12 @@ def run_predict(
     out_fn_list = []
     for tool in tool_list:
         tid = tool.tid.lower()
-        info("predict subclonal structure for '%s' ..." % tid)
+        file_id = _tool_file_id(tool)
+        info("predict subclonal structure for '%s' ..." % tool.display_name())
 
         res_dir = os.path.join(out_dir, tid)
         os.makedirs(res_dir, exist_ok = True)
-        out_fn = os.path.join(res_dir, "%s_predictions.tsv" % tid)
+        out_fn = os.path.join(res_dir, "%s_predictions.tsv" % file_id)
         
         if tid == "calicost":
             tool.predict(
@@ -1014,7 +1022,7 @@ def run_predict(
         
         elif tid == "infercnv":
             out_fn = tool.predict(
-                res_dir,
+                out_fn = out_fn,
                 k = k,
                 verbose = verbose
             )
@@ -1124,8 +1132,15 @@ def run_truth(
 ##################################################
 
 class Tool:
-    def __init__(self, tid):
+    def __init__(self, tid, run_id = None):
         self.tid = tid
+        self.run_id = run_id
+
+    def display_name(self):
+        """Return display name for plots/legends. Includes run_id when present."""
+        if self.run_id is not None and str(self.run_id).strip() != "":
+            return "%s_%s" % (self.tid, self.run_id)
+        return self.tid
 
 
 
@@ -1134,7 +1149,7 @@ class Tool:
 ######################################################
 
 class CalicoST(Tool):
-    def __init__(self, clone_label_fn):
+    def __init__(self, clone_label_fn, run_id = None):
         """CalicoST Object.
         
         Parameters
@@ -1142,8 +1157,10 @@ class CalicoST(Tool):
         clone_label_fn : str
             Path to CalicoST TSV file containing columns: 
             ``BARCODES`` and ``clone_label``.
+        run_id : str or None, default None
+            Optional run identifier for multiple runs of the same tool.
         """
-        super().__init__(tid = "CalicoST")
+        super().__init__(tid = "CalicoST", run_id = run_id)
         self.clone_label_fn = clone_label_fn
 
 
@@ -1218,15 +1235,17 @@ def extract_clonal_labels(
 #####################################################
 
 class CopyKAT(Tool):
-    def __init__(self, hclust_fn):
+    def __init__(self, hclust_fn, run_id = None):
         """CopyKAT object.
         
         Parameters
         ----------
         hclust_fn : str
             Path to RDS file containing CopyKAT hclustering results.
+        run_id : str or None, default None
+            Optional run identifier for multiple runs of the same tool.
         """
-        super().__init__(tid = "CopyKAT")
+        super().__init__(tid = "CopyKAT", run_id = run_id)
         self.hclust_fn = hclust_fn
 
         
@@ -1306,7 +1325,7 @@ def predict_subclones_from_copykat_hclust(
 ######################################################
 
 class InferCNV(Tool):
-    def __init__(self, obj_fn):
+    def __init__(self, obj_fn, run_id = None):
         """InferCNV object.
         
         Parameters
@@ -1314,19 +1333,21 @@ class InferCNV(Tool):
         obj_fn : str
             File storing the inferCNV object. 
             Typically using the "MCMC_inferCNV_obj.rds".
+        run_id : str or None, default None
+            Optional run identifier for multiple runs of the same tool.
         """
-        super().__init__(tid = "inferCNV")
+        super().__init__(tid = "inferCNV", run_id = run_id)
         self.obj_fn = obj_fn
         
         
     def predict(
         self,
-        out_dir,
+        out_fn,
         k,
         verbose = False
     ):
+        out_dir = os.path.dirname(out_fn)
         os.makedirs(out_dir, exist_ok = True)
-        out_fn = os.path.join(out_dir, "%s_predictions.tsv" % self.tid.lower())
         res = predict_subclones_from_hclust(
             obj_fn = self.obj_fn,
             out_fn = out_fn,
@@ -1619,7 +1640,7 @@ def extract_cna_expression(obj_fn, out_fn, tmp_dir, verbose = False):
 ####################################################
 
 class Numbat(Tool):
-    def __init__(self, clone_post_fn):
+    def __init__(self, clone_post_fn, run_id = None):
         """Numbat object.
         
         Parameters
@@ -1627,8 +1648,10 @@ class Numbat(Tool):
         clone_post_fn : str
             Path to Numbat TSV file with columns including 'cell' and 
             'clone_opt'.
+        run_id : str or None, default None
+            Optional run identifier for multiple runs of the same tool.
         """
-        super().__init__(tid = "Numbat")
+        super().__init__(tid = "Numbat", run_id = run_id)
         self.clone_post_fn = clone_post_fn
         
 
@@ -1711,7 +1734,7 @@ def extract_clone_labels(
 ####################################################
 
 class XClone(Tool):
-    def __init__(self, clone_post_fn):
+    def __init__(self, clone_post_fn, run_id = None):
         """XClone object.
         
         Parameters
@@ -1719,8 +1742,10 @@ class XClone(Tool):
         clone_post_fn : str
             Path to XClone TSV file with columns including 'cell_barcode' and 
             'clone_id_refined'.
+        run_id : str or None, default None
+            Optional run identifier for multiple runs of the same tool.
         """
-        super().__init__(tid = "XClone")
+        super().__init__(tid = "XClone", run_id = run_id)
         self.clone_post_fn = clone_post_fn
         
 

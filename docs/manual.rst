@@ -51,6 +51,34 @@ An example is:
     print("return code = %d" % ret)
 
 
+Multiple runs of the same tool
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To compare multiple runs from the same tool (e.g., different random seeds or parameters),
+pass ``run_id`` when creating each tool instance. Each run will appear as a separate
+curve in ROC/PRC plots and in the legend:
+
+.. code-block:: python
+
+    from bcd.cna_profile import cna_profile_main, CopyKAT, InferCNV
+
+    # Multiple CopyKAT runs with different parameters
+    copykat_run1 = CopyKAT(expr_mtx_fn="copykat/run1_CNA_raw_results.txt", run_id="run1")
+    copykat_run2 = CopyKAT(expr_mtx_fn="copykat/run2_CNA_raw_results.txt", run_id="run2")
+
+    # Multiple InferCNV runs
+    infercnv_rep1 = InferCNV(obj_fn="infercnv/rep1.rds", run_id="rep1")
+    infercnv_rep2 = InferCNV(obj_fn="infercnv/rep2.rds", run_id="rep2")
+
+    ret, res = cna_profile_main(
+        sid="test",
+        tool_list=[copykat_run1, copykat_run2, infercnv_rep1, infercnv_rep2],
+        out_dir="./out",
+        truth_fn="./data/truth.tsv",
+        cell_anno_fn="./data/cell_anno.tsv",
+        gene_anno_fn="./data/gene_anno.hg38.tsv",
+    )
+
+
 The full parameters can be found at section :ref:`Full Parameters <cna-profile-full-parameters>`.
 
 See :ref:`Implementation <cna-profile-implementation>` for details of the pipeline.
@@ -85,6 +113,9 @@ sid : str
 
 tool_list : list of Tool
     A list of tool-specific :class:`~.tool.Tool` objects.
+    For multiple runs of the same tool, pass ``run_id`` to each instance
+    (e.g., ``CopyKAT(expr_mtx_fn="...", run_id="run1")``) to distinguish
+    them in plots and output files.
 
 out_dir : str
     The output folder.
@@ -185,6 +216,9 @@ The object file storing the CNA detection results of each tool. Below are the in
     - CNV file columns: chrom, start, end, gene, clone, cnv_type (or similar)
     - Clone file columns: cell, clone
     - Output: Cell × gene CNA matrix
+
+All tools support an optional ``run_id`` parameter for multiple runs
+(e.g., ``CopyKAT(expr_mtx_fn="...", run_id="run1")``).
 
 
 Ground truth of clonal CNA profiles (TSV file)
@@ -360,6 +394,30 @@ An example is:
     print("return code = %d" % ret)
 
 
+Multiple runs of the same tool
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To compare multiple runs from the same tool, pass ``run_id`` when creating
+each tool instance. Each run will appear as a separate subplot and in the
+metrics bar chart:
+
+.. code-block:: python
+
+    from bcd.tumor_nontumor import tumor_nontumor_main, CopyKAT, InferCNV
+
+    copykat_run1 = CopyKAT(ploidy_pred_fn="./copykat/run1_pred.tsv", run_id="run1")
+    copykat_run2 = CopyKAT(ploidy_pred_fn="./copykat/run2_pred.tsv", run_id="run2")
+    infercnv_rep1 = InferCNV(obj_fn="./infercnv/rep1.rds", run_id="rep1")
+    infercnv_rep2 = InferCNV(obj_fn="./infercnv/rep2.rds", run_id="rep2")
+
+    ret, res = tumor_nontumor_main(
+        sid="HCC-3",
+        tool_list=[copykat_run1, copykat_run2, infercnv_rep1, infercnv_rep2],
+        out_dir="./out",
+        truth_fn="./data/truth.tsv",
+        tumor_labels="tumor",
+    )
+
+
 The full parameters can be found at section :ref:`Full Parameters <tumor-nontumor-full-parameters>`.
 
 See :ref:`Implementation <tumor-nontumor-implementation>` for details of the pipeline.
@@ -391,6 +449,9 @@ sid : str
 
 tool_list : list of Tool
     A list of tool-specific :class:`~.tool.Tool` objects.
+    For multiple runs of the same tool, pass ``run_id`` to each instance
+    (e.g., ``CopyKAT(ploidy_pred_fn="...", run_id="run1")``) to distinguish
+    them in plots and output files.
 
 out_dir : str
     The output folder.
@@ -469,6 +530,9 @@ Tool-specific input files are described below:
     - Input: TSV file (``tumor_prop_fn``) with columns: ``BARCODES``, ``clone_label``, ``tumor_proportion``
     - Format: Tab-delimited
     - Uses K-means clustering on ``tumor_proportion`` to classify cells
+
+All tools support an optional ``run_id`` parameter for multiple runs
+(e.g., ``CopyKAT(ploidy_pred_fn="...", run_id="run1")``).
 
 
 
@@ -625,6 +689,30 @@ An example is:
     print("return code = %d" % ret)
 
 
+Multiple runs of the same tool
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To compare multiple runs from the same tool, pass ``run_id`` when creating
+each tool instance. Each run will appear as a separate subplot in confusion
+matrices and in the metrics bar chart:
+
+.. code-block:: python
+
+    from bcd.subclonal_structure import subclonal_structure_main, CopyKAT, InferCNV
+
+    copykat_run1 = CopyKAT(hclust_fn="./copykat/run1_hclust.rds", run_id="run1")
+    copykat_run2 = CopyKAT(hclust_fn="./copykat/run2_hclust.rds", run_id="run2")
+    infercnv_rep1 = InferCNV(obj_fn="./infercnv/rep1.rds", run_id="rep1")
+    infercnv_rep2 = InferCNV(obj_fn="./infercnv/rep2.rds", run_id="rep2")
+
+    ret, res = subclonal_structure_main(
+        sid="test",
+        tool_list=[copykat_run1, copykat_run2, infercnv_rep1, infercnv_rep2],
+        out_dir="./out",
+        truth_fn="./data/truth.tsv",
+        n_cluster=3,
+    )
+
+
 The full parameters can be found at section :ref:`Full Parameters <subclonal-structure-full-parameters>`.
 
 See :ref:`Implementation <subclonal-structure-implementation>` for details of the pipeline.
@@ -656,6 +744,9 @@ sid : str
 
 tool_list : list of Tool
     A list of tool-specific :class:`~.tool.Tool` objects.
+    For multiple runs of the same tool, pass ``run_id`` to each instance
+    (e.g., ``CopyKAT(hclust_fn="...", run_id="run1")``) to distinguish
+    them in plots and output files.
 
 out_dir : str
     The output folder.
@@ -742,6 +833,9 @@ Tool-specific input files are described below:
     - Notes: 
       - Barcode column defaults to ``cell_barcode`` but can auto-detect alternatives (``cell``, ``barcode``, etc.)
       - Rows with empty ``clone_id_refined`` values are filtered out
+
+All tools support an optional ``run_id`` parameter for multiple runs
+(e.g., ``CopyKAT(hclust_fn="...", run_id="run1")``).
 
 
 

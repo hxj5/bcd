@@ -272,7 +272,7 @@ class Config:
         s =  "%s\n" % prefix
         s += "%ssid = %s\n" % (prefix, self.sid)
         s += "%slen(tool_list) = %d\n" % (prefix, len(self.tool_list))
-        s += "%stid list = '%s'\n" % (prefix, ", ".join([tool.tid for tool in self.tool_list]))
+        s += "%stid list = '%s'\n" % (prefix, ", ".join([tool.display_name() for tool in self.tool_list]))
         s += "%sout_dir = %s\n" % (prefix, self.out_dir)
         s += "%struth_fn = %s\n" % (prefix, self.truth_fn)
         s += "%scell_anno_fn = %s\n" % (prefix, self.cell_anno_fn)
@@ -405,6 +405,13 @@ def bcd_cna_type(
 #------------------ steps.extract ------------------#
 #####################################################
 
+def _tool_file_id(tool):
+    """Get unique filesystem identifier for tool (for output filenames)."""
+    if tool.run_id is not None and str(tool.run_id).strip() != "":
+        return "%s_%s" % (tool.tid.lower(), str(tool.run_id))
+    return tool.tid.lower()
+
+
 def run_extract(
     tool_list, out_dir, out_prefix,
     cna_type_list,
@@ -443,14 +450,15 @@ def run_extract(
     out_fns = {cna_type:[] for cna_type in cna_type_list}
     for tool in tool_list:
         tid = tool.tid.lower()
-        info("extract matrix for '%s' ..." % tid)
+        file_id = _tool_file_id(tool)
+        info("extract matrix for '%s' ..." % tool.display_name())
 
         res_dir = os.path.join(out_dir, tid)
         os.makedirs(res_dir, exist_ok = True)
 
         if tid == "calicost":
             out_fn_list = [os.path.join(out_dir, "%s.%s.%s.h5ad" % \
-                (out_prefix, tid, cna_type)) for cna_type in cna_type_list]
+                (out_prefix, file_id, cna_type)) for cna_type in cna_type_list]
             tool.extract(
                 out_fn_list = out_fn_list,
                 cna_type_list = cna_type_list,
@@ -460,7 +468,7 @@ def run_extract(
                 out_fns[cna_type].append(fn)
 
         elif tid == "copykat":
-            fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, tid))
+            fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, file_id))
             tool.extract(
                 out_fn = fn,
                 verbose = verbose
@@ -472,7 +480,7 @@ def run_extract(
                     out_fns[cna_type].append(None)
 
         elif tid == "infercnv":
-            fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, tid))
+            fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, file_id))
             tool.extract(
                 out_fn = fn,
                 tmp_dir = res_dir,
@@ -486,7 +494,7 @@ def run_extract(
 
         elif tid == "numbat":
             out_fn_list = [os.path.join(out_dir, "%s.%s.%s.h5ad" % \
-                    (out_prefix, tid, cna_type)) for cna_type in cna_type_list]
+                    (out_prefix, file_id, cna_type)) for cna_type in cna_type_list]
             tool.extract(
                 out_fn_list = out_fn_list,
                 cna_type_list = cna_type_list,
@@ -499,7 +507,7 @@ def run_extract(
 
         elif tid == "xclone":
             out_fn_list = [os.path.join(out_dir, "%s.%s.%s.h5ad" % \
-                    (out_prefix, tid, cna_type)) for cna_type in cna_type_list]
+                    (out_prefix, file_id, cna_type)) for cna_type in cna_type_list]
             tool.extract(
                 out_fn_list = out_fn_list,
                 cna_type_list = cna_type_list,
@@ -510,7 +518,7 @@ def run_extract(
 
         elif tid == "xclone_rdr":
             out_fn_list = [os.path.join(out_dir, "%s.%s.%s.h5ad" % \
-                    (out_prefix, tid, cna_type)) for cna_type in cna_type_list]
+                    (out_prefix, file_id, cna_type)) for cna_type in cna_type_list]
             tool.extract(
                 out_fn_list = out_fn_list,
                 cna_type_list = cna_type_list,
@@ -600,9 +608,9 @@ def run_metric(
     for i, (tool, tool_fn, truth_fn) in enumerate(
         zip(tool_list, tool_fn_list, truth_fn_list)):
 
-        tid = tool.tid
+        display_name = tool.display_name()
         if verbose:
-            info("process %s ..." % tid)
+            info("process %s ..." % display_name)
 
         adata = load_h5ad(tool_fn)
         tool_mtx = adata.X
@@ -614,7 +622,7 @@ def run_metric(
         truth_mtx = truth.X
 
         res = calc_metric(
-            tid = tid,
+            tid = display_name,
             tool_mtx = tool_mtx,
             truth_mtx = truth_mtx,
             cna_type = cna_type,
@@ -623,7 +631,7 @@ def run_metric(
         )
 
         df = res["df"]
-        df["tool"] = tid
+        df["tool"] = display_name
         if i == 0:
             df_metric = df.copy()
         else:
@@ -656,7 +664,7 @@ def run_metric(
 
     df_auroc = pd.DataFrame(
         data = dict(
-            tool = [tool.tid for tool in tool_list],
+            tool = [tool.display_name() for tool in tool_list],
             AUROC = auroc_list
         ))
     auroc_fn = os.path.join(out_dir, "%s.%s.auroc.tsv" % \
@@ -668,7 +676,7 @@ def run_metric(
 
     df_auprc = pd.DataFrame(
         data = dict(
-            tool = [tool.tid for tool in tool_list],
+            tool = [tool.display_name() for tool in tool_list],
             AUPRC = auprc_list
         ))
     auprc_fn = os.path.join(out_dir, "%s.%s.auprc.tsv" % \
@@ -1058,7 +1066,7 @@ def overlap_isec_cells(
     out_tool_fn_list = []
     out_truth_fn_list = []
     for tool, tool_fn in zip(tool_list, tool_fn_list):
-        tid = tool.tid
+        file_id = _tool_file_id(tool)
 
         adata = load_h5ad(tool_fn)
         old_shape_tool = adata.shape
@@ -1072,7 +1080,7 @@ def overlap_isec_cells(
 
         ovp_genes = np.intersect1d(adata.var["gene"], truth.var["gene"])
         fn = os.path.join(out_dir,
-                "%s.%s_and_truth.intersect.genes.tsv" % (out_prefix, tid))
+                "%s.%s_and_truth.intersect.genes.tsv" % (out_prefix, file_id))
         np.savetxt(fn, ovp_genes, fmt = "%s", delimiter = '\n')
 
         adata = adata[ovp_cells, ovp_genes]
@@ -1082,14 +1090,14 @@ def overlap_isec_cells(
 
         if verbose:
             info("%s: shape from %s to %s; truth: from %s to %s;" % \
-                 (tid, str(old_shape_tool), str(adata.shape),
+                 (tool.display_name(), str(old_shape_tool), str(adata.shape),
                   str(old_shape_truth), str(truth.shape)))
 
-        fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, tid))
+        fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, file_id))
         save_h5ad(adata, fn)
         out_tool_fn_list.append(fn)
 
-        fn = os.path.join(out_dir, "%s.truth.for_%s.h5ad" % (out_prefix, tid))
+        fn = os.path.join(out_dir, "%s.truth.for_%s.h5ad" % (out_prefix, file_id))
         save_h5ad(truth, fn)
         out_truth_fn_list.append(fn)
 
@@ -1193,7 +1201,7 @@ def overlap_isec_both(
 
     out_tool_fn_list = []
     for tool, tool_fn in zip(tool_list, tool_fn_list):
-        tid = tool.tid
+        file_id = _tool_file_id(tool)
 
         adata = load_h5ad(tool_fn)
         old_shape = adata.shape
@@ -1206,9 +1214,9 @@ def overlap_isec_both(
 
         if verbose:
             info("%s: shape from %s to %s." % \
-                 (tid, str(old_shape), str(adata.shape)))
+                 (tool.display_name(), str(old_shape), str(adata.shape)))
 
-        out_fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, tid))
+        out_fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, file_id))
         save_h5ad(adata, out_fn)
 
         out_tool_fn_list.append(out_fn)
@@ -1788,14 +1796,23 @@ class Tool:
     def __init__(
         self,
         tid = None,
-        has_gain = True, has_loss = True, has_loh = True
+        has_gain = True, has_loss = True, has_loh = True,
+        run_id = None
     ):
         self.tid = tid
+        self.run_id = run_id
         self.__has_cna_type = {
             'gain': has_gain,
             'loss': has_loss,
             'loh': has_loh
         }
+
+
+    def display_name(self):
+        """Return display name for plots/legends. Includes run_id when present."""
+        if self.run_id is not None and str(self.run_id).strip() != "":
+            return "%s_%s" % (self.tid, self.run_id)
+        return self.tid
 
 
     def has_cna_type(self, cna_type):
@@ -1811,13 +1828,14 @@ class Tool:
 ######################################################
 
 class CalicoST(Tool):
-    def __init__(self, cnv_fn, clone_fn):
+    def __init__(self, cnv_fn, clone_fn, run_id = None):
         """Initialize CalicoST."""
         super().__init__(
             tid = "CalicoST",
             has_gain = True,
             has_loss = True,
-            has_loh = True
+            has_loh = True,
+            run_id = run_id
         )
         self.cnv_fn = cnv_fn
         self.clone_fn = clone_fn
@@ -1977,12 +1995,13 @@ def calicost_extract_cna_prob(
 #####################################################
 
 class CopyKAT(Tool):
-    def __init__(self, expr_mtx_fn):
+    def __init__(self, expr_mtx_fn, run_id = None):
         super().__init__(
             tid = "CopyKat",
             has_gain = True,
             has_loss = True,
-            has_loh = False
+            has_loh = False,
+            run_id = run_id
         )
         self.expr_mtx_fn = expr_mtx_fn
 
@@ -2047,17 +2066,20 @@ def copykat_extract_cna_expression(
 ######################################################
 
 class InferCNV(Tool):
-    def __init__(self, obj_fn):
+    def __init__(self, obj_fn, run_id = None):
         """
         obj_fn : str
             File storing the inferCNV object.
             Typically using the "MCMC_inferCNV_obj.rds".
+        run_id : str or None, default None
+            Optional run identifier for multiple runs of the same tool.
         """
         super().__init__(
             tid = "inferCNV",
             has_gain = True,
             has_loss = True,
-            has_loh = False
+            has_loh = False,
+            run_id = run_id
         )
         self.obj_fn = obj_fn
 
@@ -2172,7 +2194,7 @@ def infercnv_extract_cna_expression(obj_fn, out_fn, tmp_dir, verbose = False):
 ####################################################
 
 class Numbat(Tool):
-    def __init__(self, joint_post_fn, mtx_how = 'expand'):
+    def __init__(self, joint_post_fn, mtx_how = 'expand', run_id = None):
         """
         joint_post_fn : str
             File storing the Numbat final results.
@@ -2183,12 +2205,15 @@ class Numbat(Tool):
                 expand the Numbat matrix to transcriptomics scale and fill value 0;
             - "raw":
                 use the raw Numbat matrix.
+        run_id : str or None, default None
+            Optional run identifier for multiple runs of the same tool.
         """
         super().__init__(
             tid = "Numbat",
             has_gain = True,
             has_loss = True,
-            has_loh = True
+            has_loh = True,
+            run_id = run_id
         )
         self.joint_post_fn = joint_post_fn
         self.mtx_how = mtx_how
@@ -2359,12 +2384,13 @@ def numbat_extract_cna_prob(
 ####################################################
 
 class XClone(Tool):
-    def __init__(self, combine_fn):
+    def __init__(self, combine_fn, run_id = None):
         super().__init__(
             tid = "XClone",
             has_gain = True,
             has_loss = True,
-            has_loh = True
+            has_loh = True,
+            run_id = run_id
         )
         self.combine_fn = combine_fn
 
