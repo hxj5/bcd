@@ -1899,9 +1899,14 @@ def calicost_extract_cna_prob(
 
     assert 'gene' in cnv_df.columns, \
         "cnv_genelevel.tsv must contain 'gene' column!"
-    for col in ['BARCODES', 'clone_label', 'tumor_proportion']:
+    for col in ['BARCODES', 'clone_label']:
         assert col in clone_df.columns, \
             "clone_labels.tsv must contain '%s' column!" % col
+    if 'tumor_proportion' not in clone_df.columns:
+        if verbose:
+            warn("clone_labels.tsv has no 'tumor_proportion' column; assuming 1 for all cells.")
+        clone_df = clone_df.copy()
+        clone_df['tumor_proportion'] = 1.0
 
 
     # Handle duplicate barcodes and genes

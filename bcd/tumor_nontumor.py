@@ -1380,9 +1380,14 @@ def calicost_predict_tumor_from_prop(
     # Check args and load data.
     df = pd.read_csv(tumor_prop_fn, delimiter = delimiter)
 
-    required_cols = ['BARCODES', 'clone_label', prop_col]
+    required_cols = ['BARCODES', 'clone_label']
     if not all(col in df.columns for col in required_cols):
         raise ValueError(f"TSV must contain columns: {required_cols}")
+    if prop_col not in df.columns:
+        if verbose:
+            warn("TSV has no '%s' column; assuming 1 for all cells." % prop_col)
+        df = df.copy()
+        df[prop_col] = 1.0
 
 
     # Filter out rows with empty tumor_proportion
