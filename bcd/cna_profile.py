@@ -2076,7 +2076,7 @@ class InferCNV(Tool):
         """
         obj_fn : str
             File storing the inferCNV object.
-            Typically using the "MCMC_inferCNV_obj.rds".
+            Typically using the "run.final.infercnv_obj".
         run_id : str or None, default None
             Optional run identifier for multiple runs of the same tool.
         """
