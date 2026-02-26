@@ -1348,7 +1348,7 @@ class InferCNV(Tool):
     ):
         out_dir = os.path.dirname(out_fn)
         os.makedirs(out_dir, exist_ok = True)
-        res = predict_subclones_from_hclust(
+        res = predict_subclones_from_expression(
             obj_fn = self.obj_fn,
             out_fn = out_fn,
             k = k,
@@ -1359,8 +1359,6 @@ class InferCNV(Tool):
 
 
 
-# UNUSED: Original function that performs clustering from expression data.
-# Kept for reference but not used. Use predict_subclones_from_hclust instead.
 def predict_subclones_from_expression(
     obj_fn,
     out_fn,
@@ -1427,7 +1425,7 @@ def predict_subclones_from_expression(
     return(out_fn)
 
 
-
+# UNUSED: Kept for reference. Use predict_subclones_from_expression instead.
 def predict_subclones_from_hclust(
     obj_fn,
     out_fn,
