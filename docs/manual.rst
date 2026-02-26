@@ -31,7 +31,7 @@ An example is:
 
     from bcd.cna_profile import cna_profile_main, InferCNV, Numbat, XClone, CopyKAT, CalicoST
 
-    infercnv = InferCNV(obj_fn = "./infercnv/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/MCMC_inferCNV_obj.rds")
+    infercnv = InferCNV(obj_fn = "./infercnv/run.final.infercnv_obj")
     numbat = Numbat(joint_post_fn = "./numbat/joint_post_2.tsv")
     copykat = CopyKAT(expr_mtx_fn="copykat/{sample_name}_CNA_raw_results_gene_by_cell.txt")
     xclone = XClone(combine_fn="./xclone/data/combined_final.h5ad")
@@ -185,7 +185,7 @@ Tool-specific object files
 The object file storing the CNA detection results of each tool. Below are the input requirements for each tool:
 
 **InferCNV**
-    - Input: RDS file (``obj_fn``) storing the inferCNV object (typically ``MCMC_inferCNV_obj.rds``)
+    - Input: RDS file (``obj_fn``) storing the inferCNV object (typically ``run.final.infercnv_obj``)
     - Format: R Seurat object with expression matrix (``obj@expr.data``)
     - Output: Cell × gene CNA expression matrix used for ROC/PRC analysis
 
@@ -373,7 +373,7 @@ An example is:
     )
 
     # Define arguments for each tool
-    infercnv = InferCNV(obj_fn="./infercnv/MCMC_inferCNV_obj.rds")
+    infercnv = InferCNV(obj_fn="./infercnv/run.final.infercnv_obj")
     numbat = Numbat(clone_post_fn="./numbat/clone_post_2.tsv")
     copykat = CopyKAT(ploidy_pred_fn="./copykat/copykat_pred.tsv")
     xclone = XClone(xclone_tumor_pred_fn="./xclone/xclone_tumor_predictions.tsv")
@@ -508,7 +508,7 @@ The pipeline requires the following inputs:
 Tool-specific input files are described below:
 
 **InferCNV**
-    - Input: RDS file (``obj_fn``) storing the inferCNV object (typically ``MCMC_inferCNV_obj.rds``)
+    - Input: RDS file (``obj_fn``) storing the inferCNV object (typically ``run.final.infercnv_obj``)
     - Format: R Seurat object with expression matrix
 
 **Numbat**
@@ -670,7 +670,7 @@ An example is:
     # Define arguments for each tool
     calicost = CalicoST(clone_label_fn="./calicost/clone_labels.tsv")
     copykat = CopyKAT(hclust_fn="./copykat/hclust.rds")
-    infercnv = InferCNV(obj_fn="./infercnv/MCMC_inferCNV_obj.rds")
+    infercnv = InferCNV(obj_fn="./infercnv/run.final.infercnv_obj")
     numbat = Numbat(clone_post_fn="./numbat/clone_post_2.tsv")
     xclone = XClone(clone_post_fn="./xclone/HCC3_select_ref_cell_clone_posteriors.tsv")
 
@@ -812,7 +812,7 @@ Tool-specific input files are described below:
     - Notes: Requires ``n_cluster`` parameter to specify number of clusters
 
 **InferCNV**
-    - Input: RDS file (``obj_fn``) storing the inferCNV object (typically ``MCMC_inferCNV_obj.rds``)
+    - Input: RDS file (``obj_fn``) storing the inferCNV object (typically ``run.final.infercnv_obj``)
     - Format: R inferCNV object with hierarchical clustering stored in ``obj@tumor_subclusters$hc``
     - Output: Cuts existing hierarchical clustering trees into ``k`` clusters per group
     - Notes: 
