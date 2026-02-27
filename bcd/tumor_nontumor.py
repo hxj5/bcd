@@ -4,8 +4,8 @@
 # * CalicoST - spot-wise tumor prop.
 # * CopyKAT - label of cell ploidy ('diploid' vs. 'aneuploid');
 # * InferCNV - cell x gene CNA expression matrix;
-# * Numbat - cell-wise 'tumor' vs. 'normal' assignment;
-# * XClone - ...;
+# * Numbat - cell-wise probability of CNA (p_cnv);
+# * XClone - cell-wise 'tumor' vs. 'normal' assignment;
 
 
 import anndata as ad
@@ -48,6 +48,7 @@ def tumor_nontumor_main(
     out_dir,
     truth_fn,
     tumor_labels,
+    ref_labels,
     overlap_how = 'isec',
     fig_dpi = 300,
     verbose = True
@@ -68,6 +69,9 @@ def tumor_nontumor_main(
         - `barcode` and `annotation`.
     tumor_labels : str or list of str
         The cell type labels for tumor cells in `truth_fn`.
+    ref_labels : str or list of str
+        The cell type labels for reference cells in `truth_fn`.
+        Set to 'None' if no reference cells.
     overlap_how : {"isec"}
         How to subset the tool matrices given the overlap cells.
         - "isec"
@@ -91,6 +95,7 @@ def tumor_nontumor_main(
     conf.out_dir = out_dir
     conf.truth_fn = truth_fn
     conf.tumor_labels = tumor_labels
+    conf.ref_labels = ref_labels
     conf.overlap_how = overlap_how
 
     conf.fig_dpi = fig_dpi
@@ -141,6 +146,17 @@ def bcd_core(conf):
 
     pp_dir = os.path.join(conf.out_dir, "0_pp")
     os.makedirs(pp_dir, exist_ok = True)
+    
+    
+    # extract reference cells.
+    ref_labels = conf.ref_labels
+    if isinstance(ref_labels, str):
+        ref_labels = [ref_labels]
+    truth = pd.read_csv(conf.truth_fn, sep = '\t', header = None)
+    truth.columns = ['cell', 'cell_type']
+    ref_cells = truth.loc[truth['cell_type'].isin(ref_labels), 'cell'].to_numpy()
+
+    info("%d reference cells extracted." % len(ref_cells))
 
 
     # predict tumor vs. non-tumor labels.
@@ -151,6 +167,7 @@ def bcd_core(conf):
     os.makedirs(res_dir, exist_ok = True)
     predict_res = run_predict(
         tool_list = conf.tool_list,
+        ref_cells = ref_cells,
         out_dir = res_dir,
         verbose = conf.verbose
     )
@@ -165,6 +182,7 @@ def bcd_core(conf):
         truth_fn = conf.truth_fn,
         out_fn = os.path.join(res_dir, "truth.tsv"),
         tumor_labels = conf.tumor_labels,
+        ref_labels = conf.ref_labels,
         verbose = conf.verbose
     )
 
@@ -206,6 +224,7 @@ class Config:
         self.out_dir = None
         self.truth_fn = None
         self.tumor_labels = None
+        self.ref_labels = None
         self.overlap_how = "isec"
         self.fig_dpi = 300
         self.verbose = True
@@ -222,6 +241,7 @@ class Config:
         s += "%sout_dir = %s\n" % (prefix, self.out_dir)
         s += "%struth_fn = %s\n" % (prefix, self.truth_fn)
         s += "%stumor_labels = %s\n" % (prefix, str(self.tumor_labels))
+        s += "%sref_labels = %s\n" % (prefix, str(self.ref_labels))
         s += "%soverlap_how = %s\n" % (prefix, self.overlap_how)
         s += "%sfig_dpi = %d\n" % (prefix, self.fig_dpi)
         s += "%sverbose = %s\n" % (prefix, str(self.verbose))
@@ -1155,7 +1175,9 @@ def plot_metrics_radar(
 #####################################################
 
 def run_predict(
-    tool_list, out_dir,
+    tool_list,
+    ref_cells,
+    out_dir,
     verbose = True
 ):
     # check args.
@@ -1175,18 +1197,21 @@ def run_predict(
         if tid == "calicost":
             tool.predict(
                 out_fn = out_fn,
+                ref_cells = ref_cells,
                 verbose = verbose
             )
 
         elif tid == "copykat":
             tool.predict(
                 out_fn = out_fn,
+                ref_cells = ref_cells,
                 verbose = verbose
             )
 
         elif tid == "infercnv":
             out_fn = tool.predict(
                 out_fn = out_fn,
+                ref_cells = ref_cells,
                 ref_expr = 1,
                 dist = 'euclidean',
                 hclust = 'ward.D2',
@@ -1197,18 +1222,21 @@ def run_predict(
         elif tid == "numbat":
             tool.predict(
                 out_fn,
+                ref_cells = ref_cells,
                 verbose = verbose
             )
 
         elif tid == "xclone":
             tool.predict(
                 out_fn = out_fn,
+                ref_cells = ref_cells,
                 verbose = verbose
             )
 
         elif tid == "xclone_rdr":
             tool.predict(
                 out_fn,
+                ref_cells = ref_cells,
                 random_state = 123,
                 verbose = verbose
             )
@@ -1239,6 +1267,7 @@ def run_truth(
     truth_fn,
     out_fn,
     tumor_labels,
+    ref_labels,
     verbose = True
 ):
     """Format ground truth.
@@ -1257,6 +1286,8 @@ def run_truth(
         File to save the formatted ground truth.
     tumor_labels : str or list of str
         The cell type labels for tumor cells.
+    ref_labels : str or list of str
+        The cell type labels for reference cells.
     """
     barcode_col = 'barcode'
     anno_col = 'annotation'
@@ -1267,9 +1298,16 @@ def run_truth(
 
     if isinstance(tumor_labels, str):
         tumor_labels = [tumor_labels]
+    if isinstance(ref_labels, str):
+        ref_labels = [ref_labels]
 
     df = pd.read_csv(truth_fn, delimiter = '\t', header = None)
     df.columns = [barcode_col, anno_col]
+    info("truth shape: %s." % str(df.shape))
+    
+    # remove reference cells.
+    df = df.loc[~(df[anno_col].isin(ref_labels))].copy()
+    info("truth shape after removing reference: %s." % str(df.shape))
 
 
     # Create output DataFrame
@@ -1338,7 +1376,7 @@ class CalicoST(Tool):
         self.tumor_prop_fn = tumor_prop_fn
 
 
-    def predict(self, out_fn, verbose = False):
+    def predict(self, out_fn, ref_cells, verbose = False):
         """Predict tumor cells from CalicoST output.
 
         Predict tumor cells from CalicoST output using K-means on
@@ -1353,6 +1391,7 @@ class CalicoST(Tool):
         return calicost_predict_tumor_from_prop(
             tumor_prop_fn = self.tumor_prop_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             prop_col = 'tumor_proportion',
             delimiter = '\t',
             random_state = 123,
@@ -1364,6 +1403,7 @@ class CalicoST(Tool):
 def calicost_predict_tumor_from_prop(
     tumor_prop_fn,
     out_fn,
+    ref_cells,
     prop_col,
     delimiter = '\t',
     random_state = 123,
@@ -1388,6 +1428,10 @@ def calicost_predict_tumor_from_prop(
             warn("TSV has no '%s' column; assuming 1 for all cells." % prop_col)
         df = df.copy()
         df[prop_col] = 1.0
+        
+        
+    # remove reference cells.
+    df = df.loc[~(df['BARCODES'].isin(ref_cells))].copy()
 
 
     # Filter out rows with empty tumor_proportion
@@ -1472,7 +1516,7 @@ class CopyKAT(Tool):
         self.ploidy_pred_fn = ploidy_pred_fn
 
 
-    def predict(self, out_fn, verbose = False):
+    def predict(self, out_fn, ref_cells, verbose = False):
         """Process CopyKAT predictions of tumor vs. non-tumor.
 
         Read CopyKAT TSV file, rename columns to 'barcode' and 'prediction',
@@ -1485,6 +1529,7 @@ class CopyKAT(Tool):
         return copykat_extract_tumor_prediction(
             ploidy_pred_fn = self.ploidy_pred_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             delimiter = '\t',
             verbose = verbose
         )
@@ -1494,6 +1539,7 @@ class CopyKAT(Tool):
 def copykat_extract_tumor_prediction(
     ploidy_pred_fn,
     out_fn,
+    ref_cells,
     delimiter = '\t',
     verbose = False
 ):
@@ -1514,6 +1560,9 @@ def copykat_extract_tumor_prediction(
         df = df.loc[df['copykat.pred'].isin(valid_preds), :].copy()
         warn("%d cells left after removing invalid predictions!" % \
              df.shape[0])
+        
+    # remove reference cells.
+    df = df.loc[~(df['cell.names'].isin(ref_cells))].copy()
 
 
     # Create output DataFrame
@@ -1564,6 +1613,7 @@ class InferCNV(Tool):
     def predict(
         self,
         out_fn,
+        ref_cells,
         ref_expr = 1,
         dist = 'euclidean',
         hclust = 'ward.D2',
@@ -1575,6 +1625,7 @@ class InferCNV(Tool):
         res = infercnv_predict_tumor_from_expression(
             obj_fn = self.obj_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             tmp_dir = os.path.join(out_dir, "r2py"),
             ref_expr = ref_expr,
             dist = 'euclidean',
@@ -1589,6 +1640,7 @@ class InferCNV(Tool):
 def infercnv_predict_tumor_from_expression(
     obj_fn,
     out_fn,
+    ref_cells,
     tmp_dir,
     ref_expr = 1,
     dist = 'euclidean',
@@ -1610,8 +1662,8 @@ def infercnv_predict_tumor_from_expression(
 
 
     # convert rds to adata
-    adata_fn = os.path.join(tmp_dir, 'r2py.h5ad')
-    infercnv_extract_cna_expression(obj_fn, adata_fn, tmp_dir = tmp_dir)
+    #adata_fn = os.path.join(tmp_dir, 'r2py.h5ad')
+    #infercnv_extract_cna_expression(obj_fn, adata_fn, ref_cells, tmp_dir = tmp_dir)
 
 
     # Perform tumor classification
@@ -1631,6 +1683,8 @@ def infercnv_predict_tumor_from_expression(
     s += '''obj <- readRDS("%s")\n''' % obj_fn
     s += '''mtx <- obj@expr.data\n'''
     s += '''mtx <- t(mtx)         # cell x gene matrix\n'''
+    s += '''idx <- obj@reference_grouped_cell_indices[[1]]    # assuming only 1 ref group.\n'''
+    s += '''mtx <- mtx[-idx, ]    # remove ref cells.\n'''
     s += '''hc <- hclust(dist(mtx, method = "%s"), method = "%s")\n''' % (dist, hclust)
     s += '''label <- cutree(tree = hc, k = k)\n'''
     s += '''\n'''
@@ -1689,13 +1743,15 @@ def infercnv_predict_tumor_from_expression(
 
 
 
-def infercnv_extract_cna_expression(obj_fn, out_fn, tmp_dir, verbose = False):
+def infercnv_extract_cna_expression(obj_fn, out_fn, ref_cells, tmp_dir, verbose = False):
     """Extract inferCNV expression matrix and convert it to python object.
 
     Parameters
     ----------
     out_fn : str
         Output ".h5ad" file storing the cell x gene matrix.
+    ref_cells : array of str
+        Reference cells.
     tmp_dir : str
         The folder to store temporary data.
     verbose : bool, default False
@@ -1770,6 +1826,7 @@ def infercnv_extract_cna_expression(obj_fn, out_fn, tmp_dir, verbose = False):
         obs = barcodes,
         var = genes
     )
+    adata = adata[~(adata.obs['cell'].isin(ref_cells)), :].copy()
     save_h5ad(adata, out_fn)
     if verbose:
         info("saved adata shape = %s." % str(adata.shape))
@@ -1783,7 +1840,7 @@ def infercnv_extract_cna_expression(obj_fn, out_fn, tmp_dir, verbose = False):
 ####################################################
 
 class Numbat(Tool):
-    def __init__(self, clone_post_fn, run_id = None):
+    def __init__(self, clone_post_fn, run_id = None, use_p_cnv = False):
         """Numbat object.
 
         Parameters
@@ -1793,12 +1850,15 @@ class Numbat(Tool):
             'compartment_opt'.
         run_id : str or None, default None
             Optional run identifier for multiple runs of the same tool.
+        use_p_cnv : bool
+            Whether use `p_cnv` for tumor classification.
         """
         super().__init__(tid = "Numbat", run_id = run_id)
         self.clone_post_fn = clone_post_fn
+        self.use_p_cnv = use_p_cnv
 
 
-    def predict(self, out_fn, verbose = False):
+    def predict(self, out_fn, ref_cells, verbose = False):
         """Predict tumor cells from Numbat output.
 
         Predict tumor vs. normal by clustering on `p_cnv` (probability of CNV),
@@ -1808,20 +1868,93 @@ class Numbat(Tool):
         Saves a TSV file with columns: `barcode`, `prediction` ('normal' or
         'tumor'), and `p_cnv`.
         """
-        return numbat_predict_tumor_from_p_cnv(
-            clone_post_fn = self.clone_post_fn,
-            out_fn = out_fn,
-            barcode_col = 'cell',
-            p_cnv_col = 'p_cnv',
-            delimiter = '\t',
-            verbose = verbose
-        )
+        if self.use_p_cnv:
+            return numbat_predict_tumor_from_p_cnv(
+                clone_post_fn = self.clone_post_fn,
+                out_fn = out_fn,
+                ref_cells = ref_cells,
+                barcode_col = 'cell',
+                p_cnv_col = 'p_cnv',
+                delimiter = '\t',
+                verbose = verbose
+            )
+        else:
+            return numbat_extract_tumor(
+                clone_post_fn = self.clone_post_fn,
+                out_fn = out_fn,
+                ref_cells = ref_cells,
+                barcode_col = 'cell',
+                label_col = 'compartment_opt',
+                p_cnv_col = 'p_cnv',
+                delimiter = '\t',
+                verbose = verbose
+            )
+
+
+
+def numbat_extract_tumor(
+    clone_post_fn,
+    out_fn,
+    ref_cells,
+    barcode_col = 'cell',
+    label_col = 'compartment_opt',
+    p_cnv_col = 'p_cnv',
+    delimiter = '\t',
+    verbose = False
+):
+    # Check args.
+    assert_e(clone_post_fn)
+
+    df = pd.read_csv(clone_post_fn, delimiter = delimiter)
+    required_cols = [barcode_col, label_col, p_cnv_col]
+    if not all(col in df.columns for col in required_cols):
+        raise ValueError(f"TSV must contain columns: {required_cols}")
+
+
+    # Filter out rows with empty or invalid labels.
+    n_cells_init = len(df)
+    df = df.dropna(subset = [label_col])
+    df = df.loc[df[label_col].isin(['normal', 'tumor'])].copy()
+    n_cells = len(df)
+    n_removed = n_cells_init - n_cells
+    if n_removed > 0:
+        warn(f"Removed %d cells with empty/invalid '%s' values." % \
+            (n_removed, label_col))
+    if n_cells == 0:
+        error(f"No cells remain after removing empty/invalid '%s' values." % \
+              label_col)
+        raise ValueError
+        
+    # remove reference cells.
+    df = df.loc[~(df[barcode_col].isin(ref_cells))].copy()
+
+
+    # Save to TSV
+    result_df = pd.DataFrame({
+        'barcode': df[barcode_col].to_numpy(),
+        'prediction': df[label_col].to_numpy(),
+        'p_cnv': df[p_cnv_col].to_numpy()
+    })
+    result_df.to_csv(out_fn, sep = '\t', index = False)
+    info(f"Predictions saved to {out_fn}.")
+
+
+    # Print Summary.
+    df = pd.read_csv(out_fn, sep = '\t')
+    n_cells = df.shape[0]
+    n_tumor = np.sum(df['prediction'] == 'tumor')
+    n_normal = np.sum(df['prediction'] == 'normal')
+    info("Number of all_cells=%d; tumor_cells=%d; normal_cells=%d." % \
+        (n_cells, n_tumor, n_normal))
+
+    return(out_fn)
 
 
 
 def numbat_predict_tumor_from_p_cnv(
     clone_post_fn,
     out_fn,
+    ref_cells,
     barcode_col = 'cell',
     p_cnv_col = 'p_cnv',
     delimiter = '\t',
@@ -1850,6 +1983,10 @@ def numbat_predict_tumor_from_p_cnv(
         error("No cells remain after removing empty/invalid '%s' values." % \
               p_cnv_col)
         raise ValueError
+        
+        
+    # remove reference cells.
+    df = df.loc[~(df[barcode_col].isin(ref_cells))].copy()
 
 
     # Cluster on p_cnv into 2 groups, label higher-mean cluster as tumor.
@@ -1907,7 +2044,7 @@ class XClone(Tool):
         self.xclone_tumor_pred_fn = xclone_tumor_pred_fn
 
 
-    def predict(self, out_fn, verbose = False):
+    def predict(self, out_fn, ref_cells, verbose = False):
         """Extract tumor predictions from XClone output.
 
         Reads XClone TSV file with barcode and prediction columns,
@@ -1919,6 +2056,7 @@ class XClone(Tool):
         return xclone_extract_tumor_prediction(
             xclone_tumor_pred_fn = self.xclone_tumor_pred_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             delimiter = '\t',
             verbose = verbose
         )
@@ -1928,6 +2066,7 @@ class XClone(Tool):
 def xclone_extract_tumor_prediction(
     xclone_tumor_pred_fn,
     out_fn,
+    ref_cells,
     delimiter = '\t',
     verbose = False
 ):
@@ -1965,6 +2104,10 @@ def xclone_extract_tumor_prediction(
              f"Expected: {valid_preds}")
         df = df.loc[df['prediction'].isin(valid_preds), :].copy()
         warn(f"{len(df)} cells left after removing invalid predictions!")
+        
+    # remove reference cells.
+    df = df.loc[~(df['barcode'].isin(ref_cells))].copy()
+        
 
     # Create output DataFrame
     result_df = pd.DataFrame({
