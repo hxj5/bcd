@@ -5,7 +5,7 @@
 # * CopyKAT - hclustering results;
 # * InferCNV - cell x gene CNA expression matrix;
 # * Numbat - cell-wise clone label;
-# * XClone - ...;
+# * XClone - cell-wise clone label;
 
 
 import anndata as ad
@@ -42,7 +42,9 @@ def subclonal_structure_main(
     tool_list,
     out_dir,
     truth_fn,
+    ref_labels,
     n_cluster,
+    merge_clusters = False,
     overlap_how = 'isec',
     fig_dpi = 300,
     verbose = True
@@ -61,8 +63,14 @@ def subclonal_structure_main(
         A header-free file stroing the ground truth.
         Its first two columns should be:
         - `barcode` and `annotation`.
+    ref_labels : str or list of str
+        The cell type labels for reference cells in `truth_fn`.
+        Set to 'None' if no reference cells.
     n_cluster : int
         Number of clusters for tools that do not output clone labels.
+    merge_clusters : bool
+        Whether to merge clusters when number of tool's output clones is 
+        less than `n_cluster`.
     overlap_how : {"isec"}
         How to subset the tool matrices given the overlap cells.
         - "isec"
@@ -85,7 +93,9 @@ def subclonal_structure_main(
     conf.tool_list = tool_list
     conf.out_dir = out_dir
     conf.truth_fn = truth_fn
+    conf.ref_labels = ref_labels
     conf.n_cluster = n_cluster
+    conf.merge_clusters = merge_clusters
     conf.overlap_how = overlap_how
     
     conf.fig_dpi = fig_dpi
@@ -136,6 +146,17 @@ def bcd_core(conf):
     
     pp_dir = os.path.join(conf.out_dir, "0_pp")
     os.makedirs(pp_dir, exist_ok = True)
+    
+    
+    # extract reference cells.
+    ref_labels = conf.ref_labels
+    if isinstance(ref_labels, str):
+        ref_labels = [ref_labels]
+    truth = pd.read_csv(conf.truth_fn, sep = '\t', header = None)
+    truth.columns = ['cell', 'cell_type']
+    ref_cells = truth.loc[truth['cell_type'].isin(ref_labels), 'cell'].to_numpy()
+
+    info("%d reference cells extracted." % len(ref_cells))
 
     
     # predict subclonal structure.
@@ -149,6 +170,8 @@ def bcd_core(conf):
         out_dir = res_dir,
         k = conf.n_cluster,
         truth_fn = conf.truth_fn,
+        ref_cells = ref_cells,
+        merge_clusters = conf.merge_clusters,
         verbose = conf.verbose
     )
     
@@ -160,6 +183,7 @@ def bcd_core(conf):
     os.makedirs(res_dir, exist_ok = True)
     truth_res = run_truth(
         truth_fn = conf.truth_fn, 
+        ref_labels = conf.ref_labels,
         out_fn = os.path.join(res_dir, "truth.tsv"),
         verbose = conf.verbose
     )
@@ -201,7 +225,9 @@ class Config:
         self.tool_list = None
         self.out_dir = None
         self.truth_fn = None
+        self.ref_labels = None
         self.n_cluster = None
+        self.merge_clusters = False
         self.overlap_how = "isec"
         self.fig_dpi = 300
         self.verbose = True
@@ -217,7 +243,9 @@ class Config:
         s += "%stid list = '%s'\n" % (prefix, ", ".join([tool.display_name() for tool in self.tool_list]))
         s += "%sout_dir = %s\n" % (prefix, self.out_dir)
         s += "%struth_fn = %s\n" % (prefix, self.truth_fn)
+        s += "%sref_labels = %s\n" % (prefix, self.ref_labels)
         s += "%sn_cluster = %s\n" % (prefix, str(self.n_cluster))
+        s += "%smerge_clusters = %s\n" % (prefix, str(self.merge_clusters))
         s += "%soverlap_how = %s\n" % (prefix, self.overlap_how)
         s += "%sfig_dpi = %d\n" % (prefix, self.fig_dpi)
         s += "%sverbose = %s\n" % (prefix, str(self.verbose))
@@ -990,6 +1018,8 @@ def run_predict(
     tool_list, out_dir, 
     k,
     truth_fn = None,
+    ref_cells = None,
+    merge_clusters = False,
     verbose = True
 ):
     # check args.
@@ -1009,12 +1039,14 @@ def run_predict(
         if tid == "calicost":
             tool.predict(
                 out_fn = out_fn,
+                ref_cells = ref_cells,
                 verbose = verbose
             )
 
         elif tid == "copykat":
             tool.predict(
                 out_fn = out_fn,
+                ref_cells = ref_cells,
                 k = k,
                 tmp_dir = res_dir,
                 verbose = verbose
@@ -1023,6 +1055,7 @@ def run_predict(
         elif tid == "infercnv":
             out_fn = tool.predict(
                 out_fn = out_fn,
+                ref_cells = ref_cells,
                 k = k,
                 verbose = verbose
             )
@@ -1030,12 +1063,14 @@ def run_predict(
         elif tid == "numbat":
             tool.predict(
                 out_fn,
+                ref_cells = ref_cells,
                 verbose = verbose     
             )
                 
         elif tid == "xclone":
             tool.predict(
                 out_fn = out_fn,
+                ref_cells = ref_cells,
                 verbose = verbose     
             )
         
@@ -1043,7 +1078,8 @@ def run_predict(
             raise ValueError(f"Error: unknown tool id '{tid}'.")
 
         # If tool produced more than k clones, merge down to k (by similarity to truth)
-        merge_clones_to_k(out_fn, k, truth_fn = truth_fn, method = 'truth', verbose = verbose)
+        if merge_clusters:
+            merge_clones_to_k(out_fn, k, truth_fn = truth_fn, method = 'truth', verbose = verbose)
         out_fn_list.append(out_fn)
 
 
@@ -1065,6 +1101,7 @@ def run_predict(
 
 def run_truth(
     truth_fn,
+    ref_labels,
     out_fn,
     verbose = True
 ):
@@ -1089,9 +1126,17 @@ def run_truth(
     # Check args.
     if not os.path.exists(truth_fn):
         raise ValueError(f"TSV file not found at {truth_fn}!")
+        
+    if isinstance(ref_labels, str):
+        ref_labels = [ref_labels]
 
     df = pd.read_csv(truth_fn, delimiter = '\t', header = None)
     df.columns = [barcode_col, anno_col]
+    info("truth shape: %s." % str(df.shape))
+    
+    # remove reference cells.
+    df = df.loc[~(df[anno_col].isin(ref_labels))].copy()
+    info("truth shape after removing reference: %s." % str(df.shape))
 
 
     # Create output DataFrame
@@ -1164,7 +1209,7 @@ class CalicoST(Tool):
         self.clone_label_fn = clone_label_fn
 
 
-    def predict(self, out_fn, verbose = False):
+    def predict(self, out_fn, ref_cells, verbose = False):
         """Extract the subclonal labels from CalicoST output.
 
         Saves a TSV file with columns: `barcode`, `prediction`,
@@ -1173,6 +1218,7 @@ class CalicoST(Tool):
         return extract_clonal_labels(
             clone_label_fn = self.clone_label_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             delimiter = '\t',
             verbose = verbose
         )
@@ -1182,6 +1228,7 @@ class CalicoST(Tool):
 def extract_clonal_labels(
     clone_label_fn,
     out_fn,
+    ref_cells,
     delimiter = '\t',
     verbose = False
 ):
@@ -1191,6 +1238,9 @@ def extract_clonal_labels(
     required_cols = ['BARCODES', 'clone_label']
     if not all(col in df.columns for col in required_cols):
         raise ValueError(f"TSV must contain columns: {required_cols}")
+        
+    # remove reference cells.
+    df = df.loc[~(df['BARCODES'].isin(ref_cells))].copy()
 
 
     # Filter out rows with empty clone labels.
@@ -1249,7 +1299,7 @@ class CopyKAT(Tool):
         self.hclust_fn = hclust_fn
 
         
-    def predict(self, out_fn, k, tmp_dir, verbose = False):
+    def predict(self, out_fn, ref_cells, k, tmp_dir, verbose = False):
         """Process CopyKAT predictions of subclonal structures.
 
         Saves a TSV file with columns: 
@@ -1258,6 +1308,7 @@ class CopyKAT(Tool):
         return predict_subclones_from_copykat_hclust(
             hclust_fn = self.hclust_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             k = k,
             tmp_dir = tmp_dir,
             verbose = verbose
@@ -1268,6 +1319,7 @@ class CopyKAT(Tool):
 def predict_subclones_from_copykat_hclust(
     hclust_fn,
     out_fn,
+    ref_cells,
     k,
     tmp_dir,
     verbose = False
@@ -1313,8 +1365,14 @@ def predict_subclones_from_copykat_hclust(
     df = pd.read_csv(out_fn, sep = '\t')
     labels = np.unique(df['prediction'])
     n_cells = len(df)
+    
+    # remove reference cells.
+    df = df.loc[~(df['barcode'].isin(ref_cells))].copy()
+    
     info(f"Processed {n_cells} cells after filtering.")
     info("In total %d clones." % len(labels))
+    
+    df.to_csv(out_fn, sep = '\t', index = False)
     
     return(out_fn)
 
@@ -1343,6 +1401,7 @@ class InferCNV(Tool):
     def predict(
         self,
         out_fn,
+        ref_cells,
         k,
         verbose = False
     ):
@@ -1351,6 +1410,7 @@ class InferCNV(Tool):
         res = predict_subclones_from_expression(
             obj_fn = self.obj_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             k = k,
             tmp_dir = os.path.join(out_dir, "r2py"),
             verbose = verbose
@@ -1362,6 +1422,7 @@ class InferCNV(Tool):
 def predict_subclones_from_expression(
     obj_fn,
     out_fn,
+    ref_cells,
     k,
     tmp_dir,
     dist = 'euclidean',
@@ -1374,8 +1435,8 @@ def predict_subclones_from_expression(
     
     
     # convert rds to adata
-    adata_fn = os.path.join(tmp_dir, 'r2py.h5ad')
-    extract_cna_expression(obj_fn, adata_fn, tmp_dir = tmp_dir)
+    #adata_fn = os.path.join(tmp_dir, 'r2py.h5ad')
+    #extract_cna_expression(obj_fn, adata_fn, tmp_dir = tmp_dir)
     
     
     # Perform subclone identification.
@@ -1419,8 +1480,14 @@ def predict_subclones_from_expression(
     df = pd.read_csv(out_fn, sep = '\t')
     labels = np.unique(df['prediction'])
     n_cells = len(df)
+    
+    # remove reference cells.
+    df = df.loc[~(df['barcode'].isin(ref_cells))].copy()
+    
     info(f"Processed {n_cells} cells after filtering.")
     info("In total %d clones." % len(labels))
+
+    df.to_csv(out_fn, sep = '\t', index = False)
     
     return(out_fn)
 
@@ -1429,6 +1496,7 @@ def predict_subclones_from_expression(
 def predict_subclones_from_hclust(
     obj_fn,
     out_fn,
+    ref_cells,
     k,
     tmp_dir,
     verbose = False
@@ -1537,8 +1605,14 @@ def predict_subclones_from_hclust(
     df = pd.read_csv(out_fn, sep = '\t')
     labels = np.unique(df['prediction'])
     n_cells = len(df)
+    
+    # remove reference cells.
+    df = df.loc[~(df['barcode'].isin(ref_cells))].copy()
+    
     info(f"Processed {n_cells} cells after filtering.")
     info("In total %d clones." % len(labels))
+
+    df.to_csv(out_fn, sep = '\t', index = False)
     
     return(out_fn)
 
@@ -1653,7 +1727,7 @@ class Numbat(Tool):
         self.clone_post_fn = clone_post_fn
         
 
-    def predict(self, out_fn, verbose = False):
+    def predict(self, out_fn, ref_cells, verbose = False):
         """Predict subclonal structure from Numbat output.
 
         Saves a TSV file with columns: `barcode`, `prediction`
@@ -1662,6 +1736,7 @@ class Numbat(Tool):
         return extract_clone_labels(
             clone_post_fn = self.clone_post_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             barcode_col = 'cell',
             clone_col = 'clone_opt',
             delimiter = '\t',
@@ -1673,6 +1748,7 @@ class Numbat(Tool):
 def extract_clone_labels(
     clone_post_fn,
     out_fn,
+    ref_cells,
     barcode_col = 'cell',
     clone_col = 'clone_opt',
     delimiter = '\t',
@@ -1685,6 +1761,9 @@ def extract_clone_labels(
     required_cols = [barcode_col, clone_col]
     if not all(col in df.columns for col in required_cols):
         raise ValueError(f"TSV must contain columns: {required_cols}")
+        
+    # remove reference cells.
+    df = df.loc[~(df[barcode_col].isin(ref_cells))].copy()
 
 
     # Filter out rows with empty clone labels.
@@ -1747,7 +1826,7 @@ class XClone(Tool):
         self.clone_post_fn = clone_post_fn
         
 
-    def predict(self, out_fn, verbose = False):
+    def predict(self, out_fn, ref_cells, verbose = False):
         """Predict subclonal structure from XClone output.
 
         Saves a TSV file with columns: `barcode`, `prediction`
@@ -1756,6 +1835,7 @@ class XClone(Tool):
         return extract_xclone_labels(
             clone_post_fn = self.clone_post_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             barcode_col = 'cell_barcode',
             clone_col = 'clone_id_refined',
             delimiter = '\t',
@@ -1767,6 +1847,7 @@ class XClone(Tool):
 def extract_xclone_labels(
     clone_post_fn,
     out_fn,
+    ref_cells,
     barcode_col = 'cell_barcode',
     clone_col = 'clone_id_refined',
     delimiter = '\t',
@@ -1792,6 +1873,9 @@ def extract_xclone_labels(
     required_cols = [barcode_col, clone_col]
     if not all(col in df.columns for col in required_cols):
         raise ValueError(f"TSV must contain columns: {required_cols}. Found columns: {list(df.columns)}")
+        
+    # remove reference cells.
+    df = df.loc[~(df[barcode_col].isin(ref_cells))].copy()
 
 
     # Filter out rows with empty clone labels.
