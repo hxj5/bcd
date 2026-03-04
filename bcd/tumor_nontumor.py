@@ -1428,6 +1428,7 @@ def calicost_predict_tumor_from_prop(
             warn("TSV has no '%s' column; assuming 1 for all cells." % prop_col)
         df = df.copy()
         df[prop_col] = 1.0
+        df.loc[df['clone_label'] == 0, prop_col] = 0
         
         
     # remove reference cells.
