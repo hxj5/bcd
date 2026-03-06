@@ -1907,6 +1907,7 @@ def calicost_extract_cna_prob(
             warn("clone_labels.tsv has no 'tumor_proportion' column; assuming 1 for all cells.")
         clone_df = clone_df.copy()
         clone_df['tumor_proportion'] = 1.0
+        clone_df.loc[clone_df['clone_label'] == 0, 'tumor_proportion'] = 0
 
 
     # Handle duplicate barcodes and genes
