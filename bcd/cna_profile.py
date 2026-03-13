@@ -43,6 +43,7 @@ def cna_profile_main(
     truth_fn,
     cell_anno_fn,
     gene_anno_fn,
+    ref_labels,
     cna_type_list = None,
     overlap_how = "isec-cells",
     max_n_cutoff = 1000,
@@ -78,6 +79,9 @@ def cna_profile_main(
         - "start": 1-based and inclusive;
         - "end": 1-based and inclusive;
         - "gene": gene name.
+    ref_labels : str or list of str
+        The cell type labels for reference cells in `truth_fn`.
+        Set to 'None' if no reference cells.
     cna_type_list : list of str or None, default None
         A list of CNA types.
         None means using all available CNA types, including "gain",
@@ -109,6 +113,7 @@ def cna_profile_main(
     conf.truth_fn = truth_fn
     conf.cell_anno_fn = cell_anno_fn
     conf.gene_anno_fn = gene_anno_fn
+    conf.ref_labels = ref_labels
     conf.cna_type_list = cna_type_list
     conf.overlap_how = overlap_how
     conf.max_n_cutoff = max_n_cutoff
@@ -155,6 +160,18 @@ def bcd_core(conf):
     bcd_init(conf)
     info("Configuration:")
     conf.show(fp = sys.stdout, prefix = "\t")
+    
+    
+    # extract reference cells.
+    ref_labels = conf.ref_labels
+    if isinstance(ref_labels, str):
+        ref_labels = [ref_labels]
+    cell_anno = pd.read_csv(conf.cell_anno_fn, sep = '\t', header = None)
+    cell_anno.columns = ['cell', 'cell_type']
+    ref_cells = cell_anno.loc[    \
+        cell_anno['cell_type'].isin(ref_labels), 'cell'].to_numpy()
+
+    info("%d reference cells extracted." % len(ref_cells))
 
 
     pp_dir = os.path.join(conf.out_dir, "0_pp")
@@ -174,6 +191,7 @@ def bcd_core(conf):
     os.makedirs(res_dir, exist_ok = True)
     extract_res = run_extract(
         tool_list = conf.tool_list,
+        ref_cells = ref_cells,
         out_dir = res_dir,
         out_prefix = "extract",
         cna_type_list = conf.cna_type_list,
@@ -194,6 +212,7 @@ def bcd_core(conf):
         cna_type_list = conf.cna_type_list,
         cell_anno_fn = conf.cell_anno_fn,
         gene_anno_fn = conf.gene_anno_fn,
+        ref_cells = ref_cells,
         verbose = conf.verbose
     )
 
@@ -259,6 +278,7 @@ class Config:
         self.truth_fn = None
         self.cell_anno_fn = None
         self.gene_anno_fn = None
+        self.ref_labels = None
         self.cna_type_list = None
         self.overlap_how = "isec-cells"
         self.max_n_cutoff = 1000
@@ -277,6 +297,7 @@ class Config:
         s += "%struth_fn = %s\n" % (prefix, self.truth_fn)
         s += "%scell_anno_fn = %s\n" % (prefix, self.cell_anno_fn)
         s += "%sgene_anno_fn = %s\n" % (prefix, self.gene_anno_fn)
+        s += "%sref_labels = %s\n" % (prefix, str(self.ref_labels))
         s += "%scna_type_list = %s\n" % (prefix, str(self.cna_type_list))
         s += "%soverlap_how = %s\n" % (prefix, self.overlap_how)
         s += "%smax_n_cutoff = %s\n" % (prefix, str(self.max_n_cutoff))
@@ -413,7 +434,8 @@ def _tool_file_id(tool):
 
 
 def run_extract(
-    tool_list, out_dir, out_prefix,
+    tool_list, ref_cells,
+    out_dir, out_prefix,
     cna_type_list,
     gene_anno_fn,
     verbose = True
@@ -461,6 +483,7 @@ def run_extract(
                 (out_prefix, file_id, cna_type)) for cna_type in cna_type_list]
             tool.extract(
                 out_fn_list = out_fn_list,
+                ref_cells = ref_cells,
                 cna_type_list = cna_type_list,
                 verbose = verbose
             )
@@ -471,6 +494,7 @@ def run_extract(
             fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, file_id))
             tool.extract(
                 out_fn = fn,
+                ref_cells = ref_cells,
                 verbose = verbose
             )
             for cna_type in cna_type_list:
@@ -483,6 +507,7 @@ def run_extract(
             fn = os.path.join(out_dir, "%s.%s.h5ad" % (out_prefix, file_id))
             tool.extract(
                 out_fn = fn,
+                ref_cells = ref_cells,
                 tmp_dir = res_dir,
                 verbose = verbose
             )
@@ -497,6 +522,7 @@ def run_extract(
                     (out_prefix, file_id, cna_type)) for cna_type in cna_type_list]
             tool.extract(
                 out_fn_list = out_fn_list,
+                ref_cells = ref_cells,
                 cna_type_list = cna_type_list,
                 gene_anno_fn = gene_anno_fn,
                 tmp_dir = res_dir,
@@ -510,6 +536,7 @@ def run_extract(
                     (out_prefix, file_id, cna_type)) for cna_type in cna_type_list]
             tool.extract(
                 out_fn_list = out_fn_list,
+                ref_cells = ref_cells,
                 cna_type_list = cna_type_list,
                 verbose = verbose
             )
@@ -521,6 +548,7 @@ def run_extract(
                     (out_prefix, file_id, cna_type)) for cna_type in cna_type_list]
             tool.extract(
                 out_fn_list = out_fn_list,
+                ref_cells = ref_cells,
                 cna_type_list = cna_type_list,
                 verbose = verbose
             )
@@ -1485,6 +1513,7 @@ def run_truth(
     cna_type_list,
     cell_anno_fn,
     gene_anno_fn,
+    ref_cells,
     verbose = True
 ):
     """Format input ground truth table into cell x gene binary matrix.
@@ -1563,7 +1592,12 @@ def run_truth(
 
     cell_anno = load_cell_anno(cell_anno_fn)
     assert len(cell_anno["cell"]) == len(cell_anno["cell"].unique())
+    
+    # remove reference cells.
+    cell_anno = cell_anno.loc[~(cell_anno['cell'].isin(ref_cells))].copy()
+    
     cell_anno["cell_index"] = range(cell_anno.shape[0])
+
 
     gene_anno = load_gene_anno(gene_anno_fn)
     assert len(gene_anno["gene"]) == len(gene_anno["gene"].unique())
@@ -1842,7 +1876,7 @@ class CalicoST(Tool):
         self.clone_fn = clone_fn
 
 
-    def extract(self, out_fn_list, cna_type_list, verbose = False):
+    def extract(self, out_fn_list, ref_cells, cna_type_list, verbose = False):
         """Extract CalicoST data and convert it to cell x gene probability
         matrices.
 
@@ -1866,6 +1900,7 @@ class CalicoST(Tool):
             cnv_fn = self.cnv_fn,
             clone_fn = self.clone_fn,
             out_fn_list = out_fn_list,
+            ref_cells = ref_cells,
             cna_type_list = cna_type_list,
             verbose = verbose
         )
@@ -1876,6 +1911,7 @@ def calicost_extract_cna_prob(
     cnv_fn,
     clone_fn,
     out_fn_list,
+    ref_cells,
     cna_type_list,
     verbose = False
 ):
@@ -1908,6 +1944,9 @@ def calicost_extract_cna_prob(
         clone_df = clone_df.copy()
         clone_df['tumor_proportion'] = 1.0
         clone_df.loc[clone_df['clone_label'] == 0, 'tumor_proportion'] = 0
+        
+    # remove reference cells.
+    clone_df = clone_df.loc[~(clone_df['BARCODES'].isin(ref_cells))].copy()
 
 
     # Handle duplicate barcodes and genes
@@ -2013,7 +2052,7 @@ class CopyKAT(Tool):
         self.expr_mtx_fn = expr_mtx_fn
 
 
-    def extract(self, out_fn, verbose = False):
+    def extract(self, out_fn, ref_cells, verbose = False):
         """
         Extract CNV data from CopyKAT output and save as AnnData object.
 
@@ -2032,6 +2071,7 @@ class CopyKAT(Tool):
         return copykat_extract_cna_expression(
             expr_mtx_fn = self.expr_mtx_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             verbose = verbose
         )
 
@@ -2040,6 +2080,7 @@ class CopyKAT(Tool):
 def copykat_extract_cna_expression(
     expr_mtx_fn,
     out_fn,
+    ref_cells,
     verbose = False
 ):
     if verbose:
@@ -2050,6 +2091,9 @@ def copykat_extract_cna_expression(
     mtx.index = mtx["hgnc_symbol"]
     mtx = mtx.iloc[:, 7:]              # Remove first 7 columns.
     mtx = mtx.T                        # cell x gene
+    
+    # remove reference cells.
+    mtx = mtx.loc[~(mtx.index.isin(ref_cells))].copy()
 
     if verbose:
         info(f"CopyKAT matrix shape: {mtx.shape}")
@@ -2091,17 +2135,18 @@ class InferCNV(Tool):
         self.obj_fn = obj_fn
 
 
-    def extract(self, out_fn, tmp_dir, verbose = False):
+    def extract(self, out_fn, ref_cells, tmp_dir, verbose = False):
         return infercnv_extract_cna_expression(
             obj_fn = self.obj_fn,
             out_fn = out_fn,
+            ref_cells = ref_cells,
             tmp_dir = tmp_dir,
             verbose = verbose
         )
 
 
 
-def infercnv_extract_cna_expression(obj_fn, out_fn, tmp_dir, verbose = False):
+def infercnv_extract_cna_expression(obj_fn, out_fn, ref_cells, tmp_dir, verbose = False):
     """Extract inferCNV expression matrix and convert it to python object.
 
     Parameters
@@ -2187,6 +2232,7 @@ def infercnv_extract_cna_expression(obj_fn, out_fn, tmp_dir, verbose = False):
         obs = barcodes,
         var = genes
     )
+    adata = adata[~(adata.obs['cell'].isin(ref_cells)), :].copy()
     save_h5ad(adata, out_fn)
 
     if verbose:
@@ -2229,6 +2275,7 @@ class Numbat(Tool):
     def extract(
         self,
         out_fn_list,
+        ref_cells,
         cna_type_list,
         gene_anno_fn,
         tmp_dir,
@@ -2256,6 +2303,7 @@ class Numbat(Tool):
         return numbat_extract_cna_prob(
             joint_post_fn = self.joint_post_fn,
             out_fn_list = out_fn_list,
+            ref_cells = ref_cells,
             cna_type_list = cna_type_list,
             gene_anno_fn = gene_anno_fn,
             tmp_dir = tmp_dir,
@@ -2268,6 +2316,7 @@ class Numbat(Tool):
 def numbat_extract_cna_prob(
     joint_post_fn,
     out_fn_list,
+    ref_cells,
     cna_type_list,
     gene_anno_fn,
     tmp_dir,
@@ -2306,6 +2355,9 @@ def numbat_extract_cna_prob(
         lambda x: f"{x['chrom']}:{x['start']}-{x['end']}",
         axis = 1
     )
+    
+    # remove reference cells.
+    df = df.loc[~(df['cell'].isin(ref_cells))].copy()
 
     # sometimes Numbat outputs duplicate records (i.e., cell+region) when
     # there are multiple seg_labels, e.g., 1a_amp and 1a_loh.
@@ -2405,6 +2457,7 @@ class XClone(Tool):
     def extract(
         self,
         out_fn_list,
+        ref_cells,
         cna_type_list,
         verbose = False
     ):
@@ -2426,6 +2479,7 @@ class XClone(Tool):
         return xclone_extract_cna_prob(
             combine_fn = self.combine_fn,
             out_fn_list = out_fn_list,
+            ref_cells = ref_cells,
             cna_type_list = cna_type_list,
             verbose = verbose
         )
@@ -2435,6 +2489,7 @@ class XClone(Tool):
 def xclone_extract_cna_prob(
     combine_fn,
     out_fn_list,
+    ref_cells,
     cna_type_list,
     verbose = False
 ):
@@ -2485,6 +2540,8 @@ def xclone_extract_cna_prob(
             obs = obs_df,
             var = var_df
         )
+        # remove reference cells.
+        adata = adata[~(adata.obs['cell'].isin(ref_cells)), :].copy()
         save_h5ad(adata, out_fn)
 
         if verbose:
