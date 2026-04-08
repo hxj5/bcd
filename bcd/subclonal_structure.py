@@ -44,7 +44,7 @@ def subclonal_structure_main(
     truth_fn,
     ref_labels,
     n_cluster,
-    merge_clusters = False,
+    merge_clusters = True,
     overlap_how = 'isec',
     fig_dpi = 300,
     verbose = True
@@ -227,7 +227,7 @@ class Config:
         self.truth_fn = None
         self.ref_labels = None
         self.n_cluster = None
-        self.merge_clusters = False
+        self.merge_clusters = True
         self.overlap_how = "isec"
         self.fig_dpi = 300
         self.verbose = True
@@ -1019,7 +1019,7 @@ def run_predict(
     k,
     truth_fn = None,
     ref_cells = None,
-    merge_clusters = False,
+    merge_clusters = True,
     verbose = True
 ):
     # check args.
