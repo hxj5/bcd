@@ -1,0 +1,6 @@
+	seed	seed_xf	rs_xf	scrs	scrs_xf
+n_cell	600	600	1200	1200	1200
+n_phase	8866	8866	8866	8866	8866
+n_call	22679	15295	2045	6244	2462
+n_shared_chrom_pos	1972	1478	2045	2	1
+n_shared_chrom_pos_ref_alt	1969	1477	2045	1	1
