@@ -5,9 +5,10 @@ of SOTA tools in CNA profile detection, tumor vs. non-tumor classification,
 and subclonal structure identification.
 
 Folder `project <./project>`_ stores the data and results for the project
-``Allele-aware spatial RNA-seq simulator enables comprehensive
-benchmarking of copy number alterations analysis
-across methods and spatial patterns``.
+
+    Allele-aware spatial RNA-seq simulator enables comprehensive
+    benchmarking of copy number alterations analysis
+    across methods and spatial patterns.
 
 
 
