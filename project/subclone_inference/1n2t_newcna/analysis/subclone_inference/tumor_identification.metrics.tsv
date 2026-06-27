@@ -1,0 +1,7 @@
+tool	metric	value	run_id
+CalicoST	ARI	0.9642882640988	1n2t_newcna
+CopyKAT	ARI	0.0	1n2t_newcna
+InferCNV	ARI	0.0	1n2t_newcna
+Numbat	ARI	0.8062114521644287	1n2t_newcna
+XClone_cluster-joint	ARI	0.0	1n2t_newcna
+XClone	ARI	0.802618499952505	1n2t_newcna
